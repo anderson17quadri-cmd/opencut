@@ -63,7 +63,8 @@ fn main() {
 			// make sure the Node child doesn't outlive it.
 			if let tauri::WindowEvent::Destroyed = event {
 				let state = window.state::<ServerProcess>();
-				if let Some(mut child) = state.0.lock().unwrap().take() {
+				let child = state.0.lock().unwrap().take();
+				if let Some(mut child) = child {
 					let _ = child.kill();
 				}
 			}
