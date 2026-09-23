@@ -1,5 +1,5 @@
 import type { MutableRefObject } from "react";
-import type { TAction } from "./definitions";
+import { ACTIONS, type TAction } from "./definitions";
 
 export type { TAction };
 
@@ -23,6 +23,22 @@ export type TActionWithOptionalArgs =
 	| TKeysWithValueUndefined<TActionArgsMap>;
 
 export type TActionWithNoArgs = Exclude<TAction, TActionWithArgs>;
+
+const ACTION_SET: ReadonlySet<string> = new Set(Object.keys(ACTIONS));
+
+// Keep in sync with TActionArgsMap above: these are the only entries whose
+// value type does *not* include `| undefined`, i.e. the only actions
+// TActionWithOptionalArgs excludes.
+const REQUIRED_ARG_ACTIONS: ReadonlySet<string> = new Set([
+	"remove-media-asset",
+	"remove-media-assets",
+] satisfies TActionWithArgs[]);
+
+export function isActionWithOptionalArgs(
+	value: string,
+): value is TActionWithOptionalArgs {
+	return ACTION_SET.has(value) && !REQUIRED_ARG_ACTIONS.has(value);
+}
 
 export type TArgOfAction<A extends TAction> = A extends TActionWithArgs
 	? TActionArgsMap[A]
