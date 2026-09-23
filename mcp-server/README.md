@@ -36,20 +36,24 @@ production build of the editor exposes nothing.
 
 ## Running
 
+Points at the packaged Windows desktop app (`apps/desktop-tauri`) by
+default, since that's what most people will actually have running.
+
 ```sh
-# 1. Start the editor (from ../opencut-classic — see its README for setup).
-cd ../opencut-classic
-bun run dev:web   # http://localhost:3000
+# 1. Open the OpenCut desktop app (the installed .exe/.msi) — leave it running.
 
 # 2. Install and run this MCP server (separate shell).
-cd ../mcp-server
+cd mcp-server
 bun install
-bunx tsx src/index.ts   # stdio transport
+bunx tsx src/index.ts   # stdio transport, connects to 127.0.0.1:47821
 ```
 
+Working against the dev server instead (`cd opencut-classic && bun run
+dev:web`, port 3000)? Set `OPENCUT_BASE_URL=http://localhost:3000` first.
+
 Env:
-- `OPENCUT_BASE_URL` — default `http://localhost:3000`
-- `OPENCUT_HEADLESS` — `false` to see the browser (WSLg / X11 required)
+- `OPENCUT_BASE_URL` — default `http://127.0.0.1:47821` (the packaged app's port)
+- `OPENCUT_HEADLESS` — `false` to see the browser (WSLg / X11 required) — n/a when pointed at the desktop app, which already has its own window
 - `OPENCUT_VIDEO_DIR` — set to record a webm screencast of the browser
 
 ### Registering with Claude Code / Claude Desktop

@@ -196,6 +196,17 @@ export async function GET(request: NextRequest) {
 			);
 		}
 
+		if (!webEnv.FREESOUND_API_KEY) {
+			return NextResponse.json(
+				{
+					error: "Sound search is not configured",
+					message:
+						"Set FREESOUND_API_KEY to enable sound effects search. This feature is optional.",
+				},
+				{ status: 501 },
+			);
+		}
+
 		const baseUrl = "https://freesound.org/apiv2/search/text/";
 
 		const sortParam = buildSortParameter({ query, sort });

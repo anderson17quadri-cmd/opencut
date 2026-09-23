@@ -1,0 +1,12 @@
+{
+  "name": "@opencut/desktop-tauri",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "tauri": "tauri",
+    "icon": "tauri icon ../web/public/icons/apple-icon-180x180.png"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

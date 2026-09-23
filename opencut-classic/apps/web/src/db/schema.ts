@@ -1,36 +1,45 @@
-import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 
-export const users = pgTable("users", {
+// SQLite has no native boolean/timestamp types: booleans are stored as an
+// integer 0/1 (mode: "boolean" makes drizzle coerce both ways), timestamps
+// as an integer unix epoch (mode: "timestamp" coerces to/from Date). RLS is
+// a Postgres-only feature (row-level security enforced by the DB server) —
+// meaningless for a local single-user SQLite file, so it's dropped here
+// rather than ported.
+
+export const users = sqliteTable("users", {
 	id: text("id").primaryKey(),
 
 	// todo: implement fully anonymous sign-in for privacy
 	// we don't have any auth flows currently so this is fine for now
 	name: text("name").notNull(),
 	email: text("email").notNull().unique(),
-	emailVerified: boolean("email_verified").default(false).notNull(),
+	emailVerified: integer("email_verified", { mode: "boolean" })
+		.default(false)
+		.notNull(),
 	image: text("image"),
-	createdAt: timestamp("created_at")
+	createdAt: integer("created_at", { mode: "timestamp" })
 		.$defaultFn(() => /* @__PURE__ */ new Date())
 		.notNull(),
-	updatedAt: timestamp("updated_at")
+	updatedAt: integer("updated_at", { mode: "timestamp" })
 		.$defaultFn(() => /* @__PURE__ */ new Date())
 		.notNull(),
-}).enableRLS();
+});
 
-export const sessions = pgTable("sessions", {
+export const sessions = sqliteTable("sessions", {
 	id: text("id").primaryKey(),
-	expiresAt: timestamp("expires_at").notNull(),
+	expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
 	token: text("token").notNull().unique(),
-	createdAt: timestamp("created_at").notNull(),
-	updatedAt: timestamp("updated_at").notNull(),
+	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 	ipAddress: text("ip_address"),
 	userAgent: text("user_agent"),
 	userId: text("user_id")
 		.notNull()
 		.references(() => users.id, { onDelete: "cascade" }),
-}).enableRLS();
+});
 
-export const accounts = pgTable("accounts", {
+export const accounts = sqliteTable("accounts", {
 	id: text("id").primaryKey(),
 	accountId: text("account_id").notNull(),
 	providerId: text("provider_id").notNull(),
@@ -40,31 +49,35 @@ export const accounts = pgTable("accounts", {
 	accessToken: text("access_token"),
 	refreshToken: text("refresh_token"),
 	idToken: text("id_token"),
-	accessTokenExpiresAt: timestamp("access_token_expires_at"),
-	refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
+	accessTokenExpiresAt: integer("access_token_expires_at", {
+		mode: "timestamp",
+	}),
+	refreshTokenExpiresAt: integer("refresh_token_expires_at", {
+		mode: "timestamp",
+	}),
 	scope: text("scope"),
 	password: text("password"),
-	createdAt: timestamp("created_at").notNull(),
-	updatedAt: timestamp("updated_at").notNull(),
-}).enableRLS();
+	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
 
-export const feedback = pgTable("feedback", {
+export const feedback = sqliteTable("feedback", {
 	id: text("id").primaryKey(),
 	message: text("message").notNull(),
-	createdAt: timestamp("created_at")
+	createdAt: integer("created_at", { mode: "timestamp" })
 		.$defaultFn(() => new Date())
 		.notNull(),
 });
 
-export const verifications = pgTable("verifications", {
+export const verifications = sqliteTable("verifications", {
 	id: text("id").primaryKey(),
 	identifier: text("identifier").notNull(),
 	value: text("value").notNull(),
-	expiresAt: timestamp("expires_at").notNull(),
-	createdAt: timestamp("created_at").$defaultFn(
+	expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+	createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
 		() => /* @__PURE__ */ new Date(),
 	),
-	updatedAt: timestamp("updated_at").$defaultFn(
+	updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(
 		() => /* @__PURE__ */ new Date(),
 	),
-}).enableRLS();
+});

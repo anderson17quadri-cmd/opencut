@@ -1,18 +1,39 @@
-import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
-import { webEnv } from "@/env/web";
+// In-memory sliding-window limiter. The Upstash/Redis-backed version this
+// replaced was built for a multi-instance server deployment; a local
+// single-user desktop app has exactly one process and no need to coordinate
+// rate-limit state across machines, so a plain in-memory map is enough.
+const WINDOW_MS = 60_000; // 1 minute
+const MAX_REQUESTS = 100;
 
-const redis = new Redis({
-	url: webEnv.UPSTASH_REDIS_REST_URL,
-	token: webEnv.UPSTASH_REDIS_REST_TOKEN,
-});
+const hits = new Map<string, number[]>();
 
-export const baseRateLimit = new Ratelimit({
-	redis,
-	limiter: Ratelimit.slidingWindow(100, "1 m"), // 100 requests per minute
-	analytics: true,
-	prefix: "rate-limit",
-});
+// Periodically drop keys with no requests in the current window so this
+// map doesn't grow unbounded over a long-running session.
+setInterval(
+	() => {
+		const cutoff = Date.now() - WINDOW_MS;
+		for (const [key, timestamps] of hits) {
+			const kept = timestamps.filter((t) => t > cutoff);
+			if (kept.length === 0) hits.delete(key);
+			else hits.set(key, kept);
+		}
+	},
+	5 * 60_000,
+).unref?.();
+
+export const baseRateLimit = {
+	async limit(key: string) {
+		const now = Date.now();
+		const cutoff = now - WINDOW_MS;
+		const timestamps = (hits.get(key) ?? []).filter((t) => t > cutoff);
+		const success = timestamps.length < MAX_REQUESTS;
+		if (success) {
+			timestamps.push(now);
+			hits.set(key, timestamps);
+		}
+		return { success };
+	},
+};
 
 export async function checkRateLimit({ request }: { request: Request }) {
 	const ip = request.headers.get("x-forwarded-for") ?? "anonymous";

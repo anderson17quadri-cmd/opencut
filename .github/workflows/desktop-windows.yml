@@ -1,0 +1,111 @@
+name: Build Windows desktop installer
+
+on:
+  push:
+    tags:
+      - "desktop-v*"
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.18"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: opencut-classic/apps/desktop-tauri/src-tauri -> target
+
+      - name: Install workspace deps
+        working-directory: opencut-classic
+        run: bun install
+
+      - name: Install Tauri CLI
+        working-directory: opencut-classic/apps/desktop-tauri
+        run: bun install
+
+      - name: Build web app (standalone output)
+        working-directory: opencut-classic
+        run: bun run build:web
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_SITE_URL: http://127.0.0.1:47821
+          # Optional integrations stay unset — see apps/web/src/env/web.ts,
+          # the app boots and runs fully without them.
+
+      - name: Stage portable Node runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $index = Invoke-RestMethod -Uri "https://nodejs.org/dist/index.json"
+          $latest22 = $index | Where-Object { $_.version -like "v22.*" } | Select-Object -First 1
+          $nodeVersion = $latest22.version
+          Write-Host "Staging portable Node $nodeVersion"
+          $zipUrl = "https://nodejs.org/dist/$nodeVersion/node-$nodeVersion-win-x64.zip"
+          Invoke-WebRequest -Uri $zipUrl -OutFile node.zip
+          Expand-Archive -Path node.zip -DestinationPath node-extracted
+          $extractedDir = Get-ChildItem node-extracted | Select-Object -First 1
+          $dest = "opencut-classic/apps/desktop-tauri/src-tauri/resources/node"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item -Path "$($extractedDir.FullName)\*" -Destination $dest -Recurse -Force
+
+      - name: Stage standalone server bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $serverJs = Get-ChildItem -Path opencut-classic/apps/web/.next/standalone -Recurse -Filter server.js | Select-Object -First 1
+          if (-not $serverJs) { throw "server.js not found under .next/standalone — did the standalone build succeed?" }
+          $standaloneAppDir = $serverJs.Directory.FullName
+          Write-Host "Found standalone server at $standaloneAppDir"
+
+          $dest = "opencut-classic/apps/desktop-tauri/src-tauri/resources/server"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item -Path "$standaloneAppDir\*" -Destination $dest -Recurse -Force
+
+          # `output: standalone` doesn't include static assets or public/ —
+          # copy them into the same relative spot server.js expects them.
+          Copy-Item -Path "opencut-classic/apps/web/.next/static" -Destination "$dest/.next/static" -Recurse -Force
+          if (Test-Path "opencut-classic/apps/web/public") {
+            Copy-Item -Path "opencut-classic/apps/web/public" -Destination "$dest/public" -Recurse -Force
+          }
+
+      - name: Generate app icons
+        working-directory: opencut-classic/apps/desktop-tauri
+        run: bunx tauri icon ../web/public/icons/apple-icon-180x180.png
+
+      - name: Build installer
+        working-directory: opencut-classic/apps/desktop-tauri
+        run: bunx tauri build
+
+      - name: Locate installers
+        id: artifacts
+        shell: pwsh
+        run: |
+          $bundleDir = "opencut-classic/apps/desktop-tauri/src-tauri/target/release/bundle"
+          Get-ChildItem -Path $bundleDir -Recurse -Include *.msi, *.exe | ForEach-Object {
+            Write-Host "Built: $($_.FullName)"
+          }
+          echo "bundle_dir=$bundleDir" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencut-windows-installer
+          path: |
+            ${{ steps.artifacts.outputs.bundle_dir }}/msi/*.msi
+            ${{ steps.artifacts.outputs.bundle_dir }}/nsis/*.exe
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.artifacts.outputs.bundle_dir }}/msi/*.msi
+            ${{ steps.artifacts.outputs.bundle_dir }}/nsis/*.exe

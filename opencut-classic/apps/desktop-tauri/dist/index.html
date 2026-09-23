@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>OpenCut</title>
+<style>
+	html, body { height: 100%; margin: 0; background: #0f0f0f; }
+	body {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font: 14px system-ui, sans-serif;
+		color: #999;
+	}
+</style>
+</head>
+<body>
+	<!-- Never actually shown: the Rust shell waits for the local server to
+	     answer before it opens a window at all, and points that window
+	     straight at http://127.0.0.1:<port>. This file exists only because
+	     Tauri's config schema wants a frontendDist to point at. -->
+	Starting OpenCut…
+</body>
+</html>

@@ -7,7 +7,10 @@ export type EditorSession = {
 	projectId: string;
 };
 
-const DEFAULT_BASE = process.env.OPENCUT_BASE_URL ?? "http://localhost:3000";
+// Matches the packaged Windows app's fixed local port (see
+// apps/desktop-tauri/src-tauri/src/main.rs). Override with OPENCUT_BASE_URL
+// if you're instead pointing this at `bun run dev:web` (localhost:3000).
+const DEFAULT_BASE = process.env.OPENCUT_BASE_URL ?? "http://127.0.0.1:47821";
 const HEADLESS = process.env.OPENCUT_HEADLESS !== "false"; // default headless
 const VIDEO_DIR = process.env.OPENCUT_VIDEO_DIR; // if set, record screencast
 
