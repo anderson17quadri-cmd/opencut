@@ -38,6 +38,30 @@ export type SingleCharacterShortcutKey = `${Key}`;
 
 export type ShortcutKey = ModifierBasedShortcutKey | SingleCharacterShortcutKey;
 
+const MODIFIER_KEYS = [
+	"ctrl",
+	"alt",
+	"shift",
+	"ctrl+shift",
+	"alt+shift",
+	"ctrl+alt",
+	"ctrl+alt+shift",
+] as const satisfies readonly ModifierKeys[];
+
+const MODIFIER_KEY_SET: ReadonlySet<string> = new Set(MODIFIER_KEYS);
+
+// `ModifierKeys` itself can contain "+" (e.g. "ctrl+alt+shift"), so a
+// shortcut like "ctrl+alt+shift+a" splits on the *last* "+": everything
+// before it is the modifier combo, everything after is the key.
+export function isShortcutKey(value: string): value is ShortcutKey {
+	if (isKey(value)) return true;
+	const lastPlus = value.lastIndexOf("+");
+	if (lastPlus === -1) return false;
+	const modifier = value.slice(0, lastPlus);
+	const key = value.slice(lastPlus + 1);
+	return MODIFIER_KEY_SET.has(modifier) && isKey(key);
+}
+
 export type KeybindingConfig = {
 	[key in ShortcutKey]?: TActionWithOptionalArgs;
 };
