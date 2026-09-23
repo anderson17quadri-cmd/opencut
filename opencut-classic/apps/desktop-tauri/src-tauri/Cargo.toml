@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2021"
 description = "OpenCut desktop shell — native window around the local editor server"
 
+# Standalone workspace: the repo root has its own [workspace] for the
+# editor's Rust/wasm crates (rust/crates/*, apps/desktop) with its own
+# dependency graph. This crate doesn't belong there — declaring an empty
+# [workspace] here detaches it instead of erroring as an orphaned member.
+[workspace]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
