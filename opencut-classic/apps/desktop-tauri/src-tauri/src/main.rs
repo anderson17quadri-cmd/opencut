@@ -27,14 +27,24 @@ fn main() {
 	tauri::Builder::default()
 		.manage(ServerProcess(Mutex::new(None)))
 		.setup(|app| {
-			let resource_dir = app
-				.path()
-				.resource_dir()
-				.expect("resource dir should be resolvable");
-			let data_dir = app
-				.path()
-				.app_data_dir()
-				.expect("app data dir should be resolvable");
+			// Tauri hands back verbatim paths on Windows (\\?\C:\...). Node
+			// can't resolve a main script given that way — it walks the path
+			// down to a bare "C:" and throws EISDIR — so strip the prefix
+			// before any of these reach node.exe.
+			let resource_dir = dunce::simplified(
+				&app
+					.path()
+					.resource_dir()
+					.expect("resource dir should be resolvable"),
+			)
+			.to_path_buf();
+			let data_dir = dunce::simplified(
+				&app
+					.path()
+					.app_data_dir()
+					.expect("app data dir should be resolvable"),
+			)
+			.to_path_buf();
 			let log_dir = data_dir.join("logs");
 			fs::create_dir_all(&log_dir).ok();
 
@@ -165,14 +175,8 @@ fn spawn_server(
 	let stderr_log = File::create(log_dir.join("server.stderr.log"))?;
 
 	let mut cmd = Command::new(node_bin);
-	// Windows shortcuts (Start Menu, taskbar pins) often launch a GUI app
-	// with no sane working directory set — sometimes the drive root. Node's
-	// module resolution walks up from cwd looking for package.json/
-	// node_modules and can hit `realpathSync("C:")` on the way, which
-	// throws EISDIR (a known Node/Windows quirk: "C:" without a trailing
-	// backslash isn't a valid path to stat, only "C:\" is). Anchoring cwd
-	// to the server's own directory sidesteps this entirely regardless of
-	// whatever cwd the shortcut handed us.
+	// Shortcuts can launch the app with an arbitrary cwd; pin it to the
+	// server's own directory so nothing in server.js depends on that.
 	if let Some(server_dir) = server_entry.parent() {
 		cmd.current_dir(server_dir);
 	}
