@@ -22,8 +22,8 @@
 			"icons/icon.ico"
 		],
 		"resources": {
-			"resources/node": "resources/node",
-			"resources/server": "resources/server"
+			"resources/node": "node",
+			"resources/server": "server"
 		},
 		"windows": {
 			"webviewInstallMode": {

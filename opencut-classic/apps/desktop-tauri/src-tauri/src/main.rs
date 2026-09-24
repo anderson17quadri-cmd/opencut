@@ -1,10 +1,11 @@
 // Don't open a console window on Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::fs::{self, File};
 use std::io::ErrorKind;
 use std::net::TcpStream;
-use std::path::PathBuf;
-use std::process::{Child, Command};
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -34,20 +35,41 @@ fn main() {
 				.path()
 				.app_data_dir()
 				.expect("app data dir should be resolvable");
-			std::fs::create_dir_all(&data_dir).ok();
+			let log_dir = data_dir.join("logs");
+			fs::create_dir_all(&log_dir).ok();
 
-			let node_bin = resource_dir.join("resources/node").join(NODE_BIN);
-			let server_entry = resource_dir
-				.join("resources/server")
-				.join("server.js");
+			// resource_dir() is the bundle's resources root; "node"/"server"
+			// here are destinations declared in tauri.conf.json's
+			// bundle.resources, relative to that same root.
+			let node_bin = resource_dir.join("node").join(NODE_BIN);
+			let server_entry = resource_dir.join("server").join("server.js");
 			let db_path = data_dir.join("data").join("opencut.db");
 
-			let child = spawn_server(&node_bin, &server_entry, &db_path)
-				.expect("failed to start the local OpenCut server");
-			app.state::<ServerProcess>().0.lock().unwrap().replace(child);
+			match spawn_server(&node_bin, &server_entry, &db_path, &log_dir) {
+				Ok(child) => {
+					app.state::<ServerProcess>().0.lock().unwrap().replace(child);
+				}
+				Err(err) => {
+					fail_visibly(
+						&log_dir,
+						&format!(
+							"Failed to start the local server.\n\nnode: {}\nserver: {}\n\nerror: {err}",
+							node_bin.display(),
+							server_entry.display(),
+						),
+					);
+				}
+			}
 
-			wait_for_server(PORT, Duration::from_secs(30))
-				.expect("local server did not come up in time");
+			if let Err(err) = wait_for_server(PORT, Duration::from_secs(30)) {
+				fail_visibly(
+					&log_dir,
+					&format!(
+						"The local server didn't respond on 127.0.0.1:{PORT} within 30s.\n\n\
+						error: {err}\n\nCheck logs\\server.stderr.log in this app's data folder for why."
+					),
+				);
+			}
 
 			let url = format!("http://127.0.0.1:{PORT}").parse().unwrap();
 			WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
@@ -73,18 +95,66 @@ fn main() {
 		.expect("error while running the OpenCut desktop shell");
 }
 
+/// Writes `message` to logs\fatal.log, shows it in a native message box, and
+/// exits. Startup failures here happen before any window exists — panicking
+/// (the old behavior) is invisible in a windows_subsystem="windows" release
+/// build, so this is the only way the user ever finds out something broke.
+fn fail_visibly(log_dir: &Path, message: &str) -> ! {
+	let _ = fs::write(log_dir.join("fatal.log"), message);
+	#[cfg(windows)]
+	show_message_box("OpenCut failed to start", message);
+	#[cfg(not(windows))]
+	eprintln!("OpenCut failed to start: {message}");
+	std::process::exit(1);
+}
+
+#[cfg(windows)]
+fn show_message_box(title: &str, message: &str) {
+	use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+
+	let title_w: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+	let message_w: Vec<u16> = message.encode_utf16().chain(std::iter::once(0)).collect();
+	unsafe {
+		MessageBoxW(
+			std::ptr::null_mut(),
+			message_w.as_ptr(),
+			title_w.as_ptr(),
+			MB_OK | MB_ICONERROR,
+		);
+	}
+}
+
 fn spawn_server(
 	node_bin: &PathBuf,
 	server_entry: &PathBuf,
 	db_path: &PathBuf,
+	log_dir: &Path,
 ) -> std::io::Result<Child> {
+	if !node_bin.exists() {
+		return Err(std::io::Error::new(
+			ErrorKind::NotFound,
+			format!("bundled node binary not found at {}", node_bin.display()),
+		));
+	}
+	if !server_entry.exists() {
+		return Err(std::io::Error::new(
+			ErrorKind::NotFound,
+			format!("bundled server.js not found at {}", server_entry.display()),
+		));
+	}
+
+	let stdout_log = File::create(log_dir.join("server.stdout.log"))?;
+	let stderr_log = File::create(log_dir.join("server.stderr.log"))?;
+
 	let mut cmd = Command::new(node_bin);
 	cmd.arg(server_entry)
 		.env("NODE_ENV", "production")
 		.env("PORT", PORT.to_string())
 		.env("HOSTNAME", "127.0.0.1")
 		.env("DATABASE_URL", db_path.to_string_lossy().to_string())
-		.env("NEXT_PUBLIC_SITE_URL", format!("http://127.0.0.1:{PORT}"));
+		.env("NEXT_PUBLIC_SITE_URL", format!("http://127.0.0.1:{PORT}"))
+		.stdout(Stdio::from(stdout_log))
+		.stderr(Stdio::from(stderr_log));
 
 	#[cfg(windows)]
 	{
