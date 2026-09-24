@@ -147,6 +147,17 @@ fn spawn_server(
 	let stderr_log = File::create(log_dir.join("server.stderr.log"))?;
 
 	let mut cmd = Command::new(node_bin);
+	// Windows shortcuts (Start Menu, taskbar pins) often launch a GUI app
+	// with no sane working directory set — sometimes the drive root. Node's
+	// module resolution walks up from cwd looking for package.json/
+	// node_modules and can hit `realpathSync("C:")` on the way, which
+	// throws EISDIR (a known Node/Windows quirk: "C:" without a trailing
+	// backslash isn't a valid path to stat, only "C:\" is). Anchoring cwd
+	// to the server's own directory sidesteps this entirely regardless of
+	// whatever cwd the shortcut handed us.
+	if let Some(server_dir) = server_entry.parent() {
+		cmd.current_dir(server_dir);
+	}
 	cmd.arg(server_entry)
 		.env("NODE_ENV", "production")
 		.env("PORT", PORT.to_string())
