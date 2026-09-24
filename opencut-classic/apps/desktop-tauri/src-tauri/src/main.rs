@@ -45,6 +45,23 @@ fn main() {
 			let server_entry = resource_dir.join("server").join("server.js");
 			let db_path = data_dir.join("data").join("opencut.db");
 
+			// Written unconditionally, success or failure — the previous two
+			// rounds of "it still doesn't work" turned out to need this to
+			// even tell whether the fix under test was the build that ran.
+			let _ = fs::write(
+				log_dir.join("startup.log"),
+				format!(
+					"build: {}\nresource_dir: {}\ndata_dir: {}\nnode_bin: {} (exists: {})\nserver_entry: {} (exists: {})\n",
+					env!("CARGO_PKG_VERSION"),
+					resource_dir.display(),
+					data_dir.display(),
+					node_bin.display(),
+					node_bin.exists(),
+					server_entry.display(),
+					server_entry.exists(),
+				),
+			);
+
 			match spawn_server(&node_bin, &server_entry, &db_path, &log_dir) {
 				Ok(child) => {
 					app.state::<ServerProcess>().0.lock().unwrap().replace(child);
@@ -100,11 +117,12 @@ fn main() {
 /// (the old behavior) is invisible in a windows_subsystem="windows" release
 /// build, so this is the only way the user ever finds out something broke.
 fn fail_visibly(log_dir: &Path, message: &str) -> ! {
-	let _ = fs::write(log_dir.join("fatal.log"), message);
+	let full_message = format!("{message}\n\nbuild: {}", env!("CARGO_PKG_VERSION"));
+	let _ = fs::write(log_dir.join("fatal.log"), &full_message);
 	#[cfg(windows)]
-	show_message_box("OpenCut failed to start", message);
+	show_message_box("OpenCut failed to start", &full_message);
 	#[cfg(not(windows))]
-	eprintln!("OpenCut failed to start: {message}");
+	eprintln!("OpenCut failed to start: {full_message}");
 	std::process::exit(1);
 }
 
