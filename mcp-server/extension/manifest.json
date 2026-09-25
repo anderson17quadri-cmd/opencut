@@ -1,0 +1,50 @@
+{
+  "manifest_version": "0.2",
+  "name": "opencut",
+  "display_name": "OpenCut",
+  "version": "0.2.0",
+  "description": "Let Claude edit your videos in the OpenCut app.",
+  "long_description": "Connects Claude to the OpenCut video editor running on this computer. Claude can import your videos, cut, trim, speed up, add text, adjust volume and export, and every change appears live in the OpenCut window. OpenCut must be open for the tools to work.",
+  "author": {
+    "name": "anderson17quadri-cmd",
+    "url": "https://github.com/anderson17quadri-cmd/opencut"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anderson17quadri-cmd/opencut"
+  },
+  "icon": "icon.png",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"]
+    }
+  },
+  "tools": [
+    { "name": "get_state", "description": "See the open project, its clips and media" },
+    { "name": "list_media_files", "description": "Find video, audio and image files on this computer" },
+    { "name": "list_projects", "description": "List OpenCut projects" },
+    { "name": "create_project", "description": "Create and open a new project" },
+    { "name": "open_project", "description": "Open an existing project" },
+    { "name": "add_media", "description": "Import a file into the project" },
+    { "name": "add_to_timeline", "description": "Place imported media on the timeline" },
+    { "name": "add_text", "description": "Add a title or caption" },
+    { "name": "split_clip", "description": "Split a clip at a time" },
+    { "name": "delete_clips", "description": "Delete clips" },
+    { "name": "move_clip", "description": "Move a clip" },
+    { "name": "set_speed", "description": "Speed up or slow down a clip" },
+    { "name": "set_volume", "description": "Change a clip's volume or mute it" },
+    { "name": "seek", "description": "Move the playhead" },
+    { "name": "undo", "description": "Undo the last edit" },
+    { "name": "redo", "description": "Redo the last undone edit" },
+    { "name": "export_video", "description": "Render the video to the Videos folder" }
+  ],
+  "keywords": ["video", "editor", "opencut"],
+  "license": "MIT",
+  "compatibility": {
+    "platforms": ["win32", "darwin", "linux"],
+    "runtimes": { "node": ">=18.0.0" }
+  }
+}

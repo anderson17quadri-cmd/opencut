@@ -1,82 +1,38 @@
-# opencut-mcp
+# OpenCut for Claude Desktop
 
-MCP (Model Context Protocol) server for the `opencut-classic` fork in this
-repo. Lets Claude drive the timeline via `window.__editor` in a
-Playwright-controlled browser — no manual clicking required.
+A Claude Desktop extension (`opencut.mcpb`) that lets Claude edit videos in
+the OpenCut app. Changes happen live in the OpenCut window and go through its
+normal undo history.
 
-## Why a fork instead of upstream
+## Install
 
-`opencut-classic` doesn't expose any editor internals by default. Two small,
-dev-only patches in `../opencut-classic/apps/web/src/app/editor/[project_id]/page.tsx`
-expose what this server needs:
+1. Install and open OpenCut.
+2. Double-click `opencut.mcpb` (it ships next to the installer in each build),
+   or in Claude Desktop go to **Settings → Extensions** and drag it in.
+3. Ask Claude something like "cut the first 5 seconds of ferias.mp4 from my
+   Downloads and add the title 'Férias 2026'".
 
-1. `window.__editor` — the `EditorCore` singleton (timeline, media, command
-   history, renderer).
-2. `window.__opencut` — wasm time helpers (`mediaTimeFromSeconds`,
-   `TICKS_PER_SECOND`, `mediaTime`, `roundMediaTime`), so tool code can convert
-   seconds to the editor's internal `MediaTime` (integer ticks) without
-   importing the wasm module directly.
+OpenCut has to be open while Claude works.
 
-Both are gated behind `process.env.NODE_ENV !== "production"`, so a
-production build of the editor exposes nothing.
+## How it works
 
-## Tools
+The extension is a small stdio MCP server. Each tool is a POST to
+`http://127.0.0.1:47821/api/agent/commands` on the OpenCut app, which hands
+it to the open window (see `opencut-classic/apps/web/src/agent`). Nothing
+leaves the computer.
 
-| tool | description |
-|------|-------------|
-| `opencut_get_state` | Timeline snapshot (tracks, elements, assets). |
-| `opencut_add_track` | Add a track. Prefer omitting `trackId` on `insert_clip` instead — empty tracks get pruned. |
-| `opencut_add_media` | Upload a local file as a MediaAsset. |
-| `opencut_insert_clip` | Add an element referencing a MediaAsset. `mode: "auto"` when `trackId` omitted. |
-| `opencut_split_at` | Split element(s) at a time (seconds). |
-| `opencut_move` / `opencut_trim` / `opencut_delete` | Direct pass-through to TimelineManager. |
-| `opencut_undo` / `opencut_redo` | CommandManager history. |
-| `opencut_export` | `RendererManager.exportProject`. |
-| `opencut_screenshot` | Debug: screenshot the editor viewport. |
+Tools: `get_state`, `list_media_files`, `list_projects`, `create_project`,
+`open_project`, `add_media`, `add_to_timeline`, `add_text`, `split_clip`,
+`delete_clips`, `move_clip`, `set_speed`, `set_volume`, `seek`, `undo`,
+`redo`, `export_video` (saves to `Videos\OpenCut`).
 
-## Running
-
-Points at the packaged Windows desktop app (`apps/desktop-tauri`) by
-default, since that's what most people will actually have running.
+## Building
 
 ```sh
-# 1. Open the OpenCut desktop app (the installed .exe/.msi) — leave it running.
-
-# 2. Install and run this MCP server (separate shell).
-cd mcp-server
-bun install
-bunx tsx src/index.ts   # stdio transport, connects to 127.0.0.1:47821
+npm ci
+npm run pack      # bundles src/ into extension/server and writes opencut.mcpb
 ```
 
-Working against the dev server instead (`cd opencut-classic && bun run
-dev:web`, port 3000)? Set `OPENCUT_BASE_URL=http://localhost:3000` first.
-
-Env:
-- `OPENCUT_BASE_URL` — default `http://127.0.0.1:47821` (the packaged app's port)
-- `OPENCUT_HEADLESS` — `false` to see the browser (WSLg / X11 required) — n/a when pointed at the desktop app, which already has its own window
-- `OPENCUT_VIDEO_DIR` — set to record a webm screencast of the browser
-
-### Registering with Claude Code / Claude Desktop
-
-Add an MCP server entry pointing at this package, e.g. in Claude Code:
-
-```sh
-claude mcp add opencut -- bunx tsx /absolute/path/to/mcp-server/src/index.ts
-```
-
-## Notes
-
-1. **Empty tracks are pruned** on every command. Prefer `insert_clip` with
-   `trackId` omitted (`placement: { mode: "auto" }`) — the command creates the
-   track on demand and it survives because it has an element.
-2. **MediaTime is integer ticks**, not seconds (`TICKS_PER_SECOND` is
-   120,000 at runtime). Every tool that takes a time argument
-   (`insert_clip`, `split_at`, `move`, `trim`) converts via
-   `window.__opencut.mediaTimeFromSeconds` before crossing into the editor —
-   don't pass raw seconds directly to editor APIs from new tool code.
-3. **AudioElement is a discriminated union** — uploads must carry
-   `sourceType: "upload"` in addition to `mediaId`.
-4. **Editor page is `/editor/[project_id]`**, created via the `/projects` UI
-   boot path this server uses.
+Set `OPENCUT_URL` to point at a dev server instead (e.g. `http://localhost:3000`).
 
 MIT.

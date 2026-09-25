@@ -400,9 +400,19 @@ async function exportVideo(args: Args) {
 			? args.quality
 			: "high";
 
-	const result = await editor().project.export({
-		options: { ...DEFAULT_EXPORT_OPTIONS, format, quality },
-	});
+	const render = (format: ExportFormat) =>
+		editor().project.export({
+			options: { ...DEFAULT_EXPORT_OPTIONS, format, quality },
+		});
+
+	let usedFormat = format;
+	let result = await render(format);
+	// Some WebView/Chromium builds ship without an H.264 encoder; WebM
+	// (VP9) is always available, so don't fail the whole export over it.
+	if (!result.success && format === "mp4" && /not supported|encoder/i.test(result.error ?? "")) {
+		usedFormat = "webm";
+		result = await render("webm");
+	}
 	if (!result.success || !result.buffer) {
 		throw new Error(result.error ?? "Export was cancelled.");
 	}
@@ -410,12 +420,14 @@ async function exportVideo(args: Args) {
 	const name =
 		typeof args.name === "string" && args.name ? args.name : project.metadata.name;
 	const response = await fetch(
-		`/api/agent/export?name=${encodeURIComponent(name)}&format=${format}`,
+		`/api/agent/export?name=${encodeURIComponent(name)}&format=${usedFormat}`,
 		{ method: "POST", body: result.buffer },
 	);
 	if (!response.ok) throw new Error("Rendered, but could not save the file.");
 	const { path } = (await response.json()) as { path: string };
-	return { path };
+	return usedFormat === format
+		? { path }
+		: { path, note: "MP4 encoding isn't available here, so it was saved as WebM." };
 }
 
 export async function runAgentTool({

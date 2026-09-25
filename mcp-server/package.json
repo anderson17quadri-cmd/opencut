@@ -1,28 +1,23 @@
 {
   "name": "opencut-mcp",
-  "version": "0.1.0",
-  "description": "MCP server for our OpenCut classic fork — lets Claude drive the timeline via Playwright + window.__editor",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Claude Desktop extension that lets Claude edit videos in the OpenCut app",
   "license": "MIT",
   "type": "module",
-  "main": "dist/index.js",
-  "bin": {
-    "opencut-mcp": "dist/index.js"
-  },
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "tsx src/index.ts",
-    "test": "bun test"
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node18 --outfile=extension/server/index.js",
+    "typecheck": "tsc --noEmit",
+    "pack": "npm run build && mcpb validate extension/manifest.json && mcpb pack extension opencut.mcpb"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.20.0",
-    "playwright": "^1.61.0",
-    "zod": "^3.23.0"
+    "@modelcontextprotocol/sdk": "^1.30.1",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@anthropic-ai/mcpb": "^2.1.2",
     "@types/node": "^22",
-    "bun-types": "^1.3.14",
-    "tsx": "^4",
+    "esbuild": "^0.25.0",
     "typescript": "^5"
   }
 }

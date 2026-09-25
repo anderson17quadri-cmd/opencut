@@ -78,6 +78,12 @@ jobs:
         working-directory: opencut-classic/apps/desktop-tauri
         run: bunx tauri build
 
+      - name: Build Claude Desktop extension
+        working-directory: mcp-server
+        run: |
+          npm ci
+          npm run pack
+
       - name: Locate installers
         id: artifacts
         shell: pwsh
@@ -94,6 +100,7 @@ jobs:
           path: |
             ${{ steps.artifacts.outputs.bundle_dir }}/msi/*.msi
             ${{ steps.artifacts.outputs.bundle_dir }}/nsis/*.exe
+            mcp-server/opencut.mcpb
           if-no-files-found: error
 
       - name: Attach to GitHub Release
@@ -103,3 +110,4 @@ jobs:
           files: |
             ${{ steps.artifacts.outputs.bundle_dir }}/msi/*.msi
             ${{ steps.artifacts.outputs.bundle_dir }}/nsis/*.exe
+            mcp-server/opencut.mcpb
