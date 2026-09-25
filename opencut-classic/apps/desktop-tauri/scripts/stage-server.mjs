@@ -36,6 +36,11 @@ function copyResolved(src, dst) {
 if (!existsSync(join(standalone, "apps", "web", "server.js"))) {
 	throw new Error(`no standalone build at ${standalone} — run the web build first`);
 }
+if (existsSync(join(standalone, "node_modules", ".bun"))) {
+	throw new Error(
+		"standalone build uses bun's isolated node_modules layout; reinstall with `bun install --linker hoisted` and rebuild",
+	);
+}
 
 rmSync(dest, { recursive: true, force: true });
 copyResolved(standalone, dest);

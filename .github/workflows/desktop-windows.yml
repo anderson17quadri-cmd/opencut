@@ -33,14 +33,13 @@ jobs:
 
       # Flat node_modules: with bun's isolated (symlinked) layout, Next's
       # standalone output links into a store outside the bundle and the
-      # installed app fails with "Cannot find module 'next'".
+      # installed app fails with "Cannot find module 'next'". This is the
+      # only install step — apps/desktop-tauri is a workspace member, so its
+      # Tauri CLI comes with it, and any later plain `bun install` would
+      # re-link everything in the isolated layout.
       - name: Install workspace deps
         working-directory: opencut-classic
         run: bun install --linker hoisted
-
-      - name: Install Tauri CLI
-        working-directory: opencut-classic/apps/desktop-tauri
-        run: bun install
 
       - name: Build web app (standalone output)
         working-directory: opencut-classic
