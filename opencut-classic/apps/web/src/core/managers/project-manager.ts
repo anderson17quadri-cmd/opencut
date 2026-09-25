@@ -57,8 +57,18 @@ export class ProjectManager {
 		result: null,
 	};
 	private exportCancelRequested = false;
+	private completedLoads = 0;
+	private lastLoadedProjectId: string | null = null;
 
 	constructor(private editor: EditorCore) {}
+
+	/**
+	 * Lets callers that navigate to the editor wait for the load it triggers,
+	 * which replaces whatever scene/media state was in memory before.
+	 */
+	getLoadStamp(): { count: number; projectId: string | null } {
+		return { count: this.completedLoads, projectId: this.lastLoadedProjectId };
+	}
 
 	private async ensureStorageMigrations(): Promise<void> {
 		if (this.storageMigrationPromise) {
@@ -176,6 +186,9 @@ export class ProjectManager {
 					console.error("Failed to generate project thumbnail:", error);
 				}
 			}
+
+			this.lastLoadedProjectId = id;
+			this.completedLoads++;
 		} catch (error) {
 			console.error("Failed to load project:", error);
 			throw error;

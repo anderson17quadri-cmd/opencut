@@ -34,30 +34,6 @@ import {
 	bookmarkNotesPreviewOverlay,
 	getBookmarkPreviewOverlaySource,
 } from "@/timeline/bookmarks/index";
-import { EditorCore } from "@/core";
-import { TICKS_PER_SECOND, mediaTime, mediaTimeFromSeconds, roundMediaTime } from "@/wasm";
-
-// Global exposure for MCP / Playwright automation, always on (not gated to
-// dev builds) — this fork only ever runs as a local single-user app, never
-// as a multi-tenant deployment, so there's no other visitor a global on
-// `window` could leak state to. Access via `window.__editor` in DevTools or
-// via Playwright `browser_evaluate`. `__opencut` exposes wasm time helpers
-// so external callers can construct MediaTime values from seconds without
-// importing the wasm module.
-if (typeof window !== "undefined") {
-	const w = window as unknown as {
-		__editor: EditorCore;
-		__opencut: {
-			TICKS_PER_SECOND: number;
-			mediaTime: typeof mediaTime;
-			mediaTimeFromSeconds: typeof mediaTimeFromSeconds;
-			roundMediaTime: typeof roundMediaTime;
-		};
-	};
-	w.__editor = EditorCore.getInstance();
-	w.__opencut = { TICKS_PER_SECOND, mediaTime, mediaTimeFromSeconds, roundMediaTime };
-}
-
 export default function Editor() {
 	const params = useParams();
 	const projectId = params.project_id as string;

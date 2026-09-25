@@ -8,6 +8,7 @@ import { baseMetaData } from "./metadata";
 import { BotIdClient } from "botid/client";
 import { webEnv } from "@/env/web";
 import { Inter } from "next/font/google";
+import { AgentBridge } from "@/agent/agent-bridge";
 
 const siteFont = Inter({ subsets: ["latin"] });
 
@@ -47,6 +48,7 @@ export default function RootLayout({
 				>
 					<TooltipProvider>
 						<Toaster />
+						<AgentBridge />
 						<Script
 							src="https://cdn.databuddy.cc/databuddy.js"
 							strategy="afterInteractive"
