@@ -252,14 +252,14 @@ function resolvePropertySelection({
 	if (propertyKeyframes.keyframes.length > 2) {
 		return {
 			reason: "multiple-keyframes-selected",
-			message: "Select at most two adjacent keyframes per property.",
+			message: "Selecione no máximo dois quadros-chave vizinhos por propriedade.",
 		};
 	}
 
 	if (!element.animations) {
 		return {
 			reason: "selected-element-has-no-animations",
-			message: "The selected keyframe has no editable graph.",
+			message: "O quadro-chave selecionado não tem curva editável.",
 		};
 	}
 
@@ -270,7 +270,7 @@ function resolvePropertySelection({
 	if (!scalarResult || scalarResult.channels.length === 0) {
 		return {
 			reason: "selected-keyframe-has-no-scalar-channel",
-			message: "The selected keyframe has no editable graph channel.",
+			message: "O quadro-chave selecionado não tem canal de curva editável.",
 		};
 	}
 
@@ -324,7 +324,7 @@ function resolvePropertySelection({
 	if (contexts.length === 0) {
 		return {
 			reason: "selected-keyframe-missing-on-channel",
-			message: "The selected keyframe is not editable as a graph segment.",
+			message: "O quadro-chave selecionado não pode ser editado como curva.",
 		};
 	}
 
@@ -336,7 +336,7 @@ function resolvePropertySelection({
 			? [
 					{
 						key: "value",
-						label: "Curve",
+						label: "Curva",
 						context: contexts[0].context,
 						allContexts: contexts.map(({ context }) => context),
 					},
@@ -389,14 +389,14 @@ function resolveSegmentForOption({
 	if (!option) {
 		return {
 			reason: "selected-properties-have-no-shared-component",
-			message: "Selected properties do not share a graph-editable channel.",
+			message: "As propriedades selecionadas não têm uma curva em comum.",
 		};
 	}
 
 	if (!option.context.nextKey) {
 		return {
 			reason: "selected-keyframe-has-no-next-segment",
-			message: "Select a keyframe that has an outgoing segment.",
+			message: "Selecione um quadro-chave que tenha um próximo trecho.",
 		};
 	}
 
@@ -406,14 +406,14 @@ function resolveSegmentForOption({
 	) {
 		return {
 			reason: "selected-keyframes-are-not-adjacent",
-			message: "Selected keyframes must be adjacent on each property.",
+			message: "Os quadros-chave selecionados precisam ser vizinhos em cada propriedade.",
 		};
 	}
 
 	if (option.context.keyframe.segmentToNext === "step") {
 		return {
 			reason: "selected-segment-is-hold",
-			message: "Hold segments have a fixed value - easing has no effect here.",
+			message: "Trechos fixos têm valor constante - a curva não tem efeito aqui.",
 		};
 	}
 
@@ -430,7 +430,7 @@ function resolveSegmentForOption({
 		return {
 			reason: "selected-segment-is-flat",
 			message:
-				"Cannot edit a segment where both keyframes are at the same time.",
+				"Não dá para editar um trecho com os dois quadros-chave no mesmo instante.",
 		};
 	}
 
@@ -458,7 +458,7 @@ export function resolveGraphEditorSelectionState({
 	if (selectedKeyframes.length === 0) {
 		return createUnavailableState({
 			reason: "no-keyframe-selected",
-			message: "Select a keyframe to edit its curve.",
+			message: "Selecione um quadro-chave para editar a curva.",
 		});
 	}
 
@@ -469,7 +469,7 @@ export function resolveGraphEditorSelectionState({
 	if (!primaryKeyframe) {
 		return createUnavailableState({
 			reason: "no-keyframe-selected",
-			message: "Select a keyframe to edit its curve.",
+			message: "Selecione um quadro-chave para editar a curva.",
 		});
 	}
 
@@ -480,7 +480,7 @@ export function resolveGraphEditorSelectionState({
 	if (!selectedElement) {
 		return createUnavailableState({
 			reason: "selected-element-missing",
-			message: "The selected keyframe could not be resolved.",
+			message: "Não foi possível encontrar o quadro-chave selecionado.",
 		});
 	}
 
@@ -492,7 +492,7 @@ export function resolveGraphEditorSelectionState({
 	if (spansMultipleElements) {
 		return createUnavailableState({
 			reason: "selected-keyframes-span-multiple-elements",
-			message: "Selected keyframes must be on the same element.",
+			message: "Os quadros-chave selecionados precisam estar no mesmo elemento.",
 		});
 	}
 
@@ -534,7 +534,7 @@ export function resolveGraphEditorSelectionState({
 	if (componentOptions.length === 0) {
 		return createUnavailableState({
 			reason: "selected-properties-have-no-shared-component",
-			message: "Selected properties do not share a graph-editable channel.",
+			message: "As propriedades selecionadas não têm uma curva em comum.",
 		});
 	}
 
@@ -587,7 +587,7 @@ export function resolveGraphEditorSelectionState({
 	if (!primarySegment) {
 		return createUnavailableState({
 			reason: "selected-keyframe-missing-on-channel",
-			message: "The selected keyframe is not editable as a graph segment.",
+			message: "O quadro-chave selecionado não pode ser editado como curva.",
 			componentOptions,
 			activeComponentKey,
 		});

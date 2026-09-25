@@ -99,7 +99,7 @@ export async function processMediaAssets({
 		const fileType = getMediaTypeFromFile({ file });
 
 		if (!fileType) {
-			toast.error(`Unsupported file type: ${file.name}`);
+			toast.error(`Tipo de arquivo não suportado: ${file.name}`);
 			continue;
 		}
 
@@ -186,7 +186,7 @@ export async function processMediaAssets({
 			}
 		} catch (error) {
 			console.error("Error processing file:", file.name, error);
-			toast.error(`Failed to process ${file.name}`);
+			toast.error(`Não foi possível processar ${file.name}`);
 			URL.revokeObjectURL(url);
 		}
 	}

@@ -154,7 +154,7 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 			const errorMessage =
 				error instanceof Error ? error.message : "Failed to save sound";
 			set({ savedSoundsError: errorMessage });
-			toast.error("Failed to save sound");
+			toast.error("Não foi possível salvar o som");
 			console.error("Failed to save sound:", error);
 		}
 	},
@@ -170,7 +170,7 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 			const errorMessage =
 				error instanceof Error ? error.message : "Failed to remove sound";
 			set({ savedSoundsError: errorMessage });
-			toast.error("Failed to remove sound");
+			toast.error("Não foi possível remover o som");
 			console.error("Failed to remove sound:", error);
 		}
 	},
@@ -201,7 +201,7 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 			const errorMessage =
 				error instanceof Error ? error.message : "Failed to clear saved sounds";
 			set({ savedSoundsError: errorMessage });
-			toast.error("Failed to clear saved sounds");
+			toast.error("Não foi possível limpar os sons salvos");
 			console.error("Failed to clear saved sounds:", error);
 		}
 	},
@@ -209,7 +209,7 @@ export const useSoundsStore = create<SoundsStore>((set, get) => ({
 	addSoundToTimeline: async ({ sound }) => {
 		const audioUrl = sound.previewUrl;
 		if (!audioUrl) {
-			toast.error("Sound file not available");
+			toast.error("Arquivo de som indisponível");
 			return false;
 		}
 

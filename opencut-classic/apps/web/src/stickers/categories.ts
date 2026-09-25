@@ -1,7 +1,7 @@
 export const STICKER_CATEGORIES = {
-	all: "All",
+	all: "Todas",
 	// v0.4.0
 	// logos: "Logos",
-	flags: "Flags",
-	shapes: "Shapes",
+	flags: "Bandeiras",
+	shapes: "Formas",
 };

@@ -6,7 +6,7 @@ export interface MediaUploadToastResult {
 }
 
 function getAssetLabel({ count }: { count: number }): string {
-	return count === 1 ? "media asset" : "media assets";
+	return count === 1 ? "mídia" : "mídias";
 }
 
 function waitForNextPaint(): Promise<void> {
@@ -29,22 +29,22 @@ export async function showMediaUploadToast<T extends MediaUploadToastResult>({
 		await waitForNextPaint();
 		return run();
 	}, {
-		loading: `Uploading ${getAssetLabel({ count: filesCount })}...`,
+		loading: `Importando ${getAssetLabel({ count: filesCount })}...`,
 		success: ({ uploadedCount, assetNames }) => {
 			if (uploadedCount === 1) {
 				const assetName = assetNames?.[0];
 				return assetName
-					? `${assetName} has been uploaded`
-					: "1 media asset has been uploaded";
+					? `${assetName} foi importado`
+					: "1 mídia importada";
 			}
 
 			if (uploadedCount > 1) {
-				return `${uploadedCount} media assets have been uploaded`;
+				return `${uploadedCount} mídias importadas`;
 			}
 
-			return "No media assets were uploaded";
+			return "Nenhuma mídia foi importada";
 		},
-		error: `Failed to upload ${getAssetLabel({ count: filesCount })}`,
+		error: `Não foi possível importar ${getAssetLabel({ count: filesCount })}`,
 	});
 
 	return toastPromise.unwrap();

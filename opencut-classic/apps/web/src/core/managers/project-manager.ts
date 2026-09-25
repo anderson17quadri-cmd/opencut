@@ -90,7 +90,7 @@ export class ProjectManager {
 	}
 
 	async createNewProject({ name }: { name: string }): Promise<string> {
-		const mainScene = buildDefaultScene({ name: "Main scene", isMain: true });
+		const mainScene = buildDefaultScene({ name: "Cena principal", isMain: true });
 		const newProject: TProject = {
 			metadata: {
 				id: generateUUID(),
@@ -130,7 +130,7 @@ export class ProjectManager {
 
 			return newProject.metadata.id;
 		} catch (error) {
-			toast.error("Failed to save new project");
+			toast.error("Não foi possível salvar o novo projeto");
 			throw error;
 		}
 	}
@@ -338,8 +338,8 @@ export class ProjectManager {
 		try {
 			const result = await storageService.loadProject({ id });
 			if (!result) {
-				toast.error("Project not found", {
-					description: "Please try again",
+				toast.error("Projeto não encontrado", {
+					description: "Tente novamente",
 				});
 				return;
 			}
@@ -363,7 +363,7 @@ export class ProjectManager {
 			this.updateMetadata(updatedProject);
 		} catch (error) {
 			console.error("Failed to rename project:", error);
-			toast.error("Failed to rename project", {
+			toast.error("Não foi possível renomear o projeto", {
 				description:
 					error instanceof Error ? error.message : "Please try again",
 			});
@@ -488,7 +488,7 @@ export class ProjectManager {
 			return duplicationPlans.map((plan) => plan.newProjectId);
 		} catch (error) {
 			console.error("Failed to duplicate projects:", error);
-			toast.error("Failed to duplicate projects", {
+			toast.error("Não foi possível duplicar os projetos", {
 				description:
 					error instanceof Error ? error.message : "Please try again",
 			});

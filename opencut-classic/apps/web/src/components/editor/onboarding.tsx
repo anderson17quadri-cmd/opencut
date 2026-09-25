@@ -44,10 +44,10 @@ export function Onboarding() {
 				return (
 					<div className="space-y-5">
 						<div className="space-y-3">
-							<Title title="Welcome to OpenCut Beta! 🎉" />
-							<Description description="You're among the first to try OpenCut - the fully open source CapCut alternative." />
+							<Title title="Bem-vindo ao OpenCut Beta! 🎉" />
+							<Description description="Você está entre os primeiros a usar o OpenCut - a alternativa ao CapCut totalmente de código aberto." />
 						</div>
-						<NextButton onClick={handleNext}>Next</NextButton>
+						<NextButton onClick={handleNext}>Próximo</NextButton>
 					</div>
 				);
 			case 1:
@@ -55,11 +55,11 @@ export function Onboarding() {
 					<div className="space-y-5">
 						<div className="space-y-3">
 							<Title title={getStepTitle()} />
-							<Description description="There's still a ton of things to do to make this editor amazing." />
-							<Description description="A lot of features are still missing. We're working hard to build them out!" />
-							<Description description="If you're curious, check out our roadmap [here](https://opencut.app/roadmap)" />
+							<Description description="Ainda há muito a fazer para deixar este editor incrível." />
+							<Description description="Muitos recursos ainda estão faltando. Estamos trabalhando para criá-los!" />
+							<Description description="Se tiver curiosidade, veja o roadmap [aqui](https://opencut.app/roadmap)" />
 						</div>
-						<NextButton onClick={handleNext}>Next</NextButton>
+						<NextButton onClick={handleNext}>Próximo</NextButton>
 					</div>
 				);
 			case 2:
@@ -71,7 +71,7 @@ export function Onboarding() {
 								description={`Join our [Discord](${SOCIAL_LINKS.discord}), chat with cool people and share feedback to help make OpenCut the best editor ever.`}
 							/>
 						</div>
-						<NextButton onClick={handleClose}>Finish</NextButton>
+						<NextButton onClick={handleClose}>Concluir</NextButton>
 					</div>
 				);
 			default:

@@ -182,7 +182,7 @@ function computeSplitMaskParamUpdate({
 
 export const splitMaskDefinition: MaskDefinition<"split"> = {
 	type: "split",
-	name: "Split",
+	name: "Divisão",
 	features: {
 		hasPosition: true,
 		hasRotation: true,
@@ -258,7 +258,7 @@ export const splitMaskDefinition: MaskDefinition<"split"> = {
 		},
 		{
 			key: "rotation",
-			label: "Rotation",
+			label: "Rotação",
 			type: "number",
 			default: 0,
 			min: 0,

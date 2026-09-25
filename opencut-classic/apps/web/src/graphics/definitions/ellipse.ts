@@ -13,20 +13,20 @@ interface EllipseParams {
 const ELLIPSE_PARAMS: ParamDefinition<keyof EllipseParams & string>[] = [
 	{
 		key: "fill",
-		label: "Fill",
+		label: "Preenchimento",
 		type: "color",
 		default: "#ffffff",
 	},
 	{
 		key: "stroke",
-		label: "Color",
+		label: "Cor",
 		type: "color",
 		default: "#000000",
 		group: "stroke",
 	},
 	{
 		key: "strokeWidth",
-		label: "Width",
+		label: "Largura",
 		type: "number",
 		default: 0,
 		min: 0,
@@ -40,7 +40,7 @@ const ELLIPSE_PARAMS: ParamDefinition<keyof EllipseParams & string>[] = [
 
 export const ellipseGraphicDefinition: GraphicDefinition = {
 	id: "ellipse",
-	name: "Ellipse",
+	name: "Elipse",
 	keywords: ["ellipse", "circle", "oval"],
 	params: ELLIPSE_PARAMS,
 	render({ ctx, params, width, height }) {

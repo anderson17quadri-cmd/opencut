@@ -23,128 +23,128 @@ export interface TActionDefinition extends TActionBaseDefinition {
 
 export const ACTIONS = {
 	"toggle-play": {
-		description: "Play/Pause",
+		description: "Reproduzir/Pausar",
 		category: "playback",
 	},
 	"stop-playback": {
-		description: "Stop playback",
+		description: "Parar reprodução",
 		category: "playback",
 	},
 	"seek-forward": {
-		description: "Seek forward 1 second",
+		description: "Avançar 1 segundo",
 		category: "playback",
 		args: { seconds: "number" },
 	},
 	"seek-backward": {
-		description: "Seek backward 1 second",
+		description: "Voltar 1 segundo",
 		category: "playback",
 		args: { seconds: "number" },
 	},
 	"frame-step-forward": {
-		description: "Frame step forward",
+		description: "Avançar um quadro",
 		category: "navigation",
 	},
 	"frame-step-backward": {
-		description: "Frame step backward",
+		description: "Voltar um quadro",
 		category: "navigation",
 	},
 	"jump-forward": {
-		description: "Jump forward 5 seconds",
+		description: "Avançar 5 segundos",
 		category: "navigation",
 		args: { seconds: "number" },
 	},
 	"jump-backward": {
-		description: "Jump backward 5 seconds",
+		description: "Voltar 5 segundos",
 		category: "navigation",
 		args: { seconds: "number" },
 	},
 	"goto-start": {
-		description: "Go to timeline start",
+		description: "Ir para o início da linha do tempo",
 		category: "navigation",
 	},
 	"goto-end": {
-		description: "Go to timeline end",
+		description: "Ir para o fim da linha do tempo",
 		category: "navigation",
 	},
 	split: {
-		description: "Split elements at playhead",
+		description: "Dividir elementos no cursor",
 		category: "editing",
 	},
 	"split-left": {
-		description: "Split and remove left",
+		description: "Dividir e remover à esquerda",
 		category: "editing",
 	},
 	"split-right": {
-		description: "Split and remove right",
+		description: "Dividir e remover à direita",
 		category: "editing",
 	},
 	"delete-selected": {
-		description: "Delete current selection",
+		description: "Excluir seleção atual",
 		category: "editing",
 	},
 	"copy-selected": {
-		description: "Copy selected elements",
+		description: "Copiar elementos selecionados",
 		category: "editing",
 	},
 	"paste-copied": {
-		description: "Paste elements at playhead",
+		description: "Colar elementos no cursor",
 		category: "editing",
 	},
 	"toggle-snapping": {
-		description: "Toggle snapping",
+		description: "Ativar/desativar ímã",
 		category: "editing",
 	},
 	"toggle-ripple-editing": {
-		description: "Toggle ripple editing",
+		description: "Ativar/desativar edição em cascata",
 		category: "editing",
 	},
 	"toggle-source-audio": {
-		description: "Extract or recover source audio",
+		description: "Extrair ou recuperar o áudio original",
 		category: "editing",
 	},
 	"select-all": {
-		description: "Select all elements",
+		description: "Selecionar todos os elementos",
 		category: "selection",
 	},
 	"cancel-interaction": {
-		description: "Cancel current interaction",
+		description: "Cancelar ação atual",
 		category: "controls",
 	},
 	"deselect-all": {
-		description: "Deselect all elements",
+		description: "Desmarcar todos os elementos",
 		category: "selection",
 	},
 	"duplicate-selected": {
-		description: "Duplicate selected element",
+		description: "Duplicar elemento selecionado",
 		category: "selection",
 	},
 	"toggle-elements-muted-selected": {
-		description: "Mute/unmute selected elements",
+		description: "Silenciar/ativar som dos elementos selecionados",
 		category: "selection",
 	},
 	"toggle-elements-visibility-selected": {
-		description: "Show/hide selected elements",
+		description: "Mostrar/ocultar elementos selecionados",
 		category: "selection",
 	},
 	"toggle-bookmark": {
-		description: "Toggle bookmark at playhead",
+		description: "Marcador no cursor (ativar/desativar)",
 		category: "timeline",
 	},
 	undo: {
-		description: "Undo",
+		description: "Desfazer",
 		category: "history",
 	},
 	redo: {
-		description: "Redo",
+		description: "Refazer",
 		category: "history",
 	},
 	"remove-media-asset": {
-		description: "Remove media asset",
+		description: "Remover mídia",
 		category: "assets",
 		args: { projectId: "string", assetId: "string" },
 	},
 	"remove-media-assets": {
-		description: "Remove media assets",
+		description: "Remover mídias",
 		category: "assets",
 		args: { projectId: "string", assetIds: "string[]" },
 	},

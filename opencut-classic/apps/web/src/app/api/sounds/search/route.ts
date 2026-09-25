@@ -190,7 +190,7 @@ export async function GET(request: NextRequest) {
 				{
 					error: "Songs are not available yet",
 					message:
-						"Song search functionality is coming soon. Try searching for sound effects instead.",
+						"A busca de músicas chega em breve. Por enquanto, busque efeitos sonoros.",
 				},
 				{ status: 501 },
 			);
@@ -201,7 +201,7 @@ export async function GET(request: NextRequest) {
 				{
 					error: "Sound search is not configured",
 					message:
-						"Set FREESOUND_API_KEY to enable sound effects search. This feature is optional.",
+						"Defina FREESOUND_API_KEY para ativar a busca de efeitos sonoros. Este recurso é opcional.",
 				},
 				{ status: 501 },
 			);

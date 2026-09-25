@@ -64,7 +64,7 @@ export function useSoundSearch({
 				setHasNextPage({ hasNext: !!data.next });
 				setTotalCount(data.count);
 			} else {
-				setSearchError({ error: `Load more failed: ${response.status}` });
+				setSearchError({ error: `Falha ao carregar mais: ${response.status}` });
 			}
 		} catch (err) {
 			setSearchError({
@@ -108,7 +108,7 @@ export function useSoundSearch({
 						setTotalCount({ count: data.count });
 						setCurrentPage({ page: 1 });
 					} else {
-						setSearchError({ error: `Search failed: ${response.status}` });
+						setSearchError({ error: `Falha na busca: ${response.status}` });
 					}
 				}
 			} catch (err) {
