@@ -52,7 +52,13 @@ fn main() {
 			// here are destinations declared in tauri.conf.json's
 			// bundle.resources, relative to that same root.
 			let node_bin = resource_dir.join("node").join(NODE_BIN);
-			let server_entry = resource_dir.join("server").join("server.js");
+			// Next's standalone output keeps the monorepo layout: server.js
+			// sits in apps/web with node_modules at the standalone root.
+			let server_entry = resource_dir
+				.join("server")
+				.join("apps")
+				.join("web")
+				.join("server.js");
 			let db_path = data_dir.join("data").join("opencut.db");
 
 			// Written unconditionally, success or failure — the previous two

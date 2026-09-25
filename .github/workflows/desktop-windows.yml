@@ -12,9 +12,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # better-sqlite3 is a native addon tied to one Node ABI; its postinstall
+      # builds against whatever `node` is on PATH, so match the Node 22 we
+      # bundle into the installer.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # 1.3+ for --linker hoisted (see "Install workspace deps").
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.2.18"
+          bun-version: "1.3.11"
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -23,9 +31,12 @@ jobs:
         with:
           workspaces: opencut-classic/apps/desktop-tauri/src-tauri -> target
 
+      # Flat node_modules: with bun's isolated (symlinked) layout, Next's
+      # standalone output links into a store outside the bundle and the
+      # installed app fails with "Cannot find module 'next'".
       - name: Install workspace deps
         working-directory: opencut-classic
-        run: bun install
+        run: bun install --linker hoisted
 
       - name: Install Tauri CLI
         working-directory: opencut-classic/apps/desktop-tauri
@@ -57,24 +68,8 @@ jobs:
           Copy-Item -Path "$($extractedDir.FullName)\*" -Destination $dest -Recurse -Force
 
       - name: Stage standalone server bundle
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $serverJs = Get-ChildItem -Path opencut-classic/apps/web/.next/standalone -Recurse -Filter server.js | Select-Object -First 1
-          if (-not $serverJs) { throw "server.js not found under .next/standalone — did the standalone build succeed?" }
-          $standaloneAppDir = $serverJs.Directory.FullName
-          Write-Host "Found standalone server at $standaloneAppDir"
-
-          $dest = "opencut-classic/apps/desktop-tauri/src-tauri/resources/server"
-          New-Item -ItemType Directory -Force -Path $dest | Out-Null
-          Copy-Item -Path "$standaloneAppDir\*" -Destination $dest -Recurse -Force
-
-          # `output: standalone` doesn't include static assets or public/ —
-          # copy them into the same relative spot server.js expects them.
-          Copy-Item -Path "opencut-classic/apps/web/.next/static" -Destination "$dest/.next/static" -Recurse -Force
-          if (Test-Path "opencut-classic/apps/web/public") {
-            Copy-Item -Path "opencut-classic/apps/web/public" -Destination "$dest/public" -Recurse -Force
-          }
+        working-directory: opencut-classic
+        run: node apps/desktop-tauri/scripts/stage-server.mjs
 
       - name: Generate app icons
         working-directory: opencut-classic/apps/desktop-tauri

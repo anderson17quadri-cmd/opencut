@@ -26,3 +26,5 @@ target/
 .cargo-tools/
 
 rust-migration-notes.md
+# local SQLite DB (created on dev runs and during next build)
+apps/web/data/
