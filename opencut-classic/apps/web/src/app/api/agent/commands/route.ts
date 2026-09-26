@@ -25,6 +25,8 @@ const SLOW_TOOL_TIMEOUT_MS: Record<string, number> = {
 	add_transition: 5 * 60_000,
 	create_motion_graphic: 30 * 60_000,
 	preview_motion_graphic: 5 * 60_000,
+	cutout_person: 60 * 60_000,
+	track_hand: 30 * 60_000,
 };
 
 const str = (value: unknown) => (typeof value === "string" ? value : "");

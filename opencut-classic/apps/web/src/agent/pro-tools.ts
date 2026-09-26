@@ -1596,6 +1596,54 @@ async function addTransition(args: Args) {
 	};
 }
 
+
+// ------------------------------------------------------------------ layers
+
+async function moveLayer(args: Args) {
+	requireOpenProject();
+	const trackId = str(args, "trackId");
+	const to = str(args, "to");
+	const current = tracks();
+	const index = current.overlay.findIndex((track) => track.id === trackId);
+	if (index < 0) {
+		throw new Error(
+			current.main.id === trackId
+				? "The main track always stays at the bottom."
+				: `No overlay layer with id ${trackId}.`,
+		);
+	}
+	const overlay = [...current.overlay];
+	const [track] = overlay.splice(index, 1);
+	let target: number;
+	switch (to) {
+		case "top":
+			target = 0;
+			break;
+		case "bottom":
+			target = overlay.length;
+			break;
+		case "up":
+			target = Math.max(0, index - 1);
+			break;
+		case "down":
+			target = Math.min(overlay.length, index + 1);
+			break;
+		default: {
+			const match = /^(above|below):(.+)$/.exec(to);
+			const other = match ? overlay.findIndex((t) => t.id === match[2]) : -1;
+			if (!match || other < 0) {
+				throw new Error('"to" must be top, bottom, up, down, above:<trackId> or below:<trackId>');
+			}
+			target = match[1] === "above" ? other : other + 1;
+		}
+	}
+	overlay.splice(target, 0, track);
+	await asOneStep(() => editor().timeline.updateTracks({ ...current, overlay }));
+	return {
+		layers: [...overlay.map((t) => ({ id: t.id, type: t.type, clips: t.elements.map((e) => e.name) })), { id: current.main.id, type: "main", clips: current.main.elements.map((e) => e.name) }],
+	};
+}
+
 // ---------------------------------------------------------------- dispatch
 
 export async function runProTool({
@@ -1654,6 +1702,8 @@ export async function runProTool({
 			return removeSilences(args);
 		case "add_transition":
 			return addTransition(args);
+		case "move_layer":
+			return moveLayer(args);
 		default:
 			return runGraphicsTool({ tool, args });
 	}

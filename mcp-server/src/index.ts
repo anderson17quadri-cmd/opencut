@@ -27,6 +27,8 @@ Editing:
 - Layout: set_clip_properties places any visual clip with anchor (top-left … bottom-right, center) plus margin, or x/y (centre, % of the frame), and sizes it with widthPercent/heightPercent. It also styles text (font, size, colour, bold, background box), opacity, rotation, blend mode.
 - Titles: add_text, then set_clip_properties to style and place it, then animate for motion.
 - Icons, emojis, logos and flags: search_icons (English keywords) then add_icon. Shapes (boxes, circles, bars behind text): add_shape.
+- Layers: tracks listed first in get_state are drawn on top. move_layer brings a layer to the front/back or above/below another.
+- Graphics behind the presenter (logos floating behind them, text behind the head, 3D screens in the background, "the scene splits into layers"): run cutout_person on the talking-head clip; motion graphics created before or after it land under the cutout, so they appear between the background and the person. Use move_layer for other clips (icons, text) that should go behind.
 - Motion graphics (animated titles, VS cards, animated explainers/recipes/infographics, counters, 3D objects, floating screens, end cards, anything the built-in tools can't do): write code for create_motion_graphic; iterate with preview_motion_graphic first. Use search_icons ids as images for logos.
 - Animation: animate with a preset (fade_in, fade_out, pop_in, slide_in_left, zoom_in for a Ken Burns effect, …) or custom keyframes. For audio, fade_in/fade_out ramp the volume.
 - Looks: list_effects, then add_effect on one clip (clipId) or on every video/image clip in a time range (no clipId). Available: blur, colour adjustment (brightness, contrast, saturation, exposure, temperature…), black & white, sepia, vignette, sharpen, chroma key (green screen removal). add_mask cuts a clip to a shape (circle, heart, star, cinematic bars…).
@@ -197,7 +199,7 @@ async function callViewFrames(args: Record<string, unknown>, tool = "view_frames
 }
 
 const server = new McpServer(
-	{ name: "opencut", version: "0.3.1" },
+	{ name: "opencut", version: "0.4.0" },
 	{ instructions: INSTRUCTIONS },
 );
 
@@ -845,6 +847,30 @@ server.registerTool(
 		},
 	},
 	(args) => callOpenCut("create_motion_graphic", args),
+);
+
+server.registerTool(
+	"cutout_person",
+	{
+		title: "Cut out the person (AI)",
+		description:
+			"Separate the person from the background of a video clip with on-device AI (MediaPipe). Creates a copy of the clip that shows only the person (transparent background) on the top layer, exactly aligned with the original (same timing, speed, position, animations, effects). With it you can put graphics BEHIND the presenter: create the graphic (create_motion_graphic, add_icon, add_text, floating screens…) and it lands on a layer under the cutout, so it appears between the background and the person — like logos passing behind them or text behind the head. Do the cut after timing edits (split/trim/speed) of that clip; takes roughly real time. First run downloads the AI model (internet needed).",
+		inputSchema: {
+			clipId: z.string().describe("A video clip showing a person"),
+			quality: z.enum(["auto", "fast", "best"]).optional().describe("auto (default): best edges with a GPU, fast model otherwise"),
+		},
+	},
+	(args) => callOpenCut("cutout_person", args),
+);
+
+server.registerTool(
+	"move_layer",
+	{
+		title: "Reorder layers",
+		description: "Bring a layer (overlay track) to the front or send it back: to = top, bottom, up, down, above:<trackId> or below:<trackId>. The main video track always stays at the bottom.",
+		inputSchema: { trackId: z.string(), to: z.string() },
+	},
+	(args) => callOpenCut("move_layer", args),
 );
 
 server.registerTool(

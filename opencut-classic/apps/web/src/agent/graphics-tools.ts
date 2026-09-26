@@ -1,4 +1,7 @@
+import { toast } from "sonner";
 import { AddTrackCommand, InsertElementCommand } from "@/commands";
+import type { TimelineElement } from "@/timeline";
+import { type MediaTime, mediaTimeToSeconds } from "@/wasm";
 import { frameRateToFloat } from "@/fps/utils";
 import { buildElementFromMedia } from "@/timeline/element-utils";
 import { encodeAlphaVideo } from "./alpha-video";
@@ -6,7 +9,10 @@ import {
 	type Args,
 	allTracks,
 	asOneStep,
+	CUTOUT_SUFFIX,
 	editor,
+	findElement,
+	graphicsInsertIndex,
 	fromSeconds,
 	importMediaFile,
 	optNum,
@@ -15,6 +21,7 @@ import {
 	toSeconds,
 } from "./helpers";
 import { ICON_ID_PATTERN, iconSvgUrl } from "./icons";
+import { cutoutPerson } from "./vision";
 import {
 	type MotionGraphicSpec,
 	type MotionMode,
@@ -26,6 +33,27 @@ import {
 // imported into the project and placed on their own layer.
 
 const MAX_DURATION_SECONDS = 120;
+
+/** A progress notice in the editor while Claude renders something long. */
+function progressToast(label: string) {
+	const id = `agent-${label}-${Date.now()}`;
+	let lastShown = -1;
+	toast.loading(`${label}…`, { id });
+	return {
+		update(fraction: number) {
+			const percent = Math.floor(fraction * 100);
+			if (percent === lastShown) return;
+			lastShown = percent;
+			toast.loading(`${label}… ${percent}%`, { id });
+		},
+		done(message: string) {
+			toast.success(message, { id });
+		},
+		fail() {
+			toast.dismiss(id);
+		},
+	};
+}
 
 async function loadImage(url: string): Promise<ImageBitmap> {
 	const response = await fetch(url);
@@ -135,7 +163,11 @@ async function createMotionGraphic(args: Args) {
 	const name = (typeof args.name === "string" && args.name.trim()) || "Motion graphic";
 	const frameCount = Math.max(1, Math.round(spec.duration * spec.fps));
 
-	const sandbox = await MotionGraphicSandbox.start(spec);
+	const progress = progressToast(`Claude está criando "${name}"`);
+	const sandbox = await MotionGraphicSandbox.start(spec).catch((error) => {
+		progress.fail();
+		throw error;
+	});
 	let file: File;
 	try {
 		file = await encodeAlphaVideo({
@@ -148,8 +180,13 @@ async function createMotionGraphic(args: Args) {
 				const bitmap = await sandbox.renderFrame(index, time);
 				ctx.drawImage(bitmap, 0, 0, ctx.canvas.width, ctx.canvas.height);
 				bitmap.close();
+				progress.update(index / frameCount);
 			},
 		});
+		progress.done(`"${name}" pronto`);
+	} catch (error) {
+		progress.fail();
+		throw error;
 	} finally {
 		sandbox.dispose();
 	}
@@ -162,9 +199,9 @@ async function createMotionGraphic(args: Args) {
 	const start = Math.max(0, optNum(args, "start") ?? toSeconds(editor().playback.getCurrentTime()));
 
 	const clip = await asOneStep(() => {
-		// Its own layer on top of everything (a cutout of the presenter can
-		// later go above it to put the graphic "behind" them).
-		const addTrack = new AddTrackCommand({ type: "video", index: 0 });
+		// Its own layer on top, but under any person cutout, so a cutout
+		// keeps the presenter in front of it.
+		const addTrack = new AddTrackCommand({ type: "video", index: graphicsInsertIndex() });
 		addTrack.execute();
 		const trackId = addTrack.getTrackId();
 		const before = new Set(allTracks().flatMap((t) => t.elements.map((e) => e.id)));
@@ -195,6 +232,83 @@ async function createMotionGraphic(args: Args) {
 	};
 }
 
+
+async function cutoutPersonTool(args: Args) {
+	requireOpenProject();
+	const { track, element } = findElement(str(args, "clipId"));
+	if (element.type !== "video") throw new Error("cutout_person works on video clips.");
+	const asset = editor()
+		.media.getAssets()
+		.find((candidate) => candidate.id === element.mediaId);
+	if (!asset) throw new Error("The clip's media is missing.");
+
+	const rate = element.retime?.rate ?? 1;
+	const sourceStart = mediaTimeToSeconds({ time: element.trimStart });
+	const clipSeconds = toSeconds(element.duration);
+	const sourceEnd = sourceStart + clipSeconds * rate;
+
+	const progress = progressToast("Recortando a pessoa com IA");
+	let file: File;
+	try {
+		file = await cutoutPerson({
+			file: asset.file,
+			start: sourceStart,
+			end: sourceEnd,
+			quality: args.quality === "fast" || args.quality === "best" ? args.quality : "auto",
+			onProgress: (fraction) => progress.update(fraction),
+		});
+		progress.done("Recorte pronto");
+	} catch (error) {
+		progress.fail();
+		throw error;
+	}
+	const media = await importMediaFile(file);
+	const cutoutAsset = editor()
+		.media.getAssets()
+		.find((candidate) => candidate.id === media.mediaId);
+	if (!cutoutAsset) throw new Error("The cutout could not be imported.");
+
+	// A copy of the clip that shows only the person, on the top layer, with
+	// the same timing, speed, position, animations and effects, so it lines
+	// up exactly with the original underneath.
+	const result = await asOneStep(() => {
+		const addTrack = new AddTrackCommand({ type: "video", index: 0 });
+		addTrack.execute();
+		const trackId = addTrack.getTrackId();
+		const base = buildElementFromMedia({
+			mediaId: cutoutAsset.id,
+			mediaType: cutoutAsset.type,
+			name: `${element.name} ${CUTOUT_SUFFIX}`,
+			duration: element.duration,
+			startTime: element.startTime,
+		});
+		const copy = {
+			...base,
+			params: { ...element.params, muted: true },
+			animations: element.animations,
+			retime: element.retime,
+			effects: element.effects,
+			trimStart: 0 as MediaTime,
+			trimEnd: 0 as MediaTime,
+		} as typeof base;
+		const before = new Set(allTracks().flatMap((t) => t.elements.map((e) => e.id)));
+		new InsertElementCommand({ element: copy, placement: { mode: "explicit", trackId } }).execute();
+		const inserted = allTracks()
+			.find((t) => t.id === trackId)
+			?.elements.find((e: TimelineElement) => !before.has(e.id));
+		if (!inserted) throw new Error("The editor rejected the cutout clip.");
+		return { trackId, clipId: inserted.id };
+	});
+
+	return {
+		...result,
+		mediaId: media.mediaId,
+		originalClipId: element.id,
+		originalTrackId: track.id,
+		note: "The person now sits on the top layer. Graphics on layers between the original clip and this one appear behind the person. If you move or trim the original later, run cutout_person again.",
+	};
+}
+
 export async function runGraphicsTool({
 	tool,
 	args,
@@ -207,6 +321,8 @@ export async function runGraphicsTool({
 			return previewMotionGraphic(args);
 		case "create_motion_graphic":
 			return createMotionGraphic(args);
+		case "cutout_person":
+			return cutoutPersonTool(args);
 		default:
 			throw new Error(`Unknown tool: ${tool}`);
 	}

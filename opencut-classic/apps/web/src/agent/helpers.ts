@@ -165,3 +165,22 @@ export async function asOneStep<T>(run: () => T | Promise<T>): Promise<T> {
 	return result;
 }
 
+
+/** Clips made by cutout_person carry this suffix in their name. */
+export const CUTOUT_SUFFIX = "(pessoa)";
+
+/**
+ * Overlay index for a new graphics layer: the top, but under any person
+ * cutout layers sitting there, so new graphics land behind the presenter.
+ */
+export function graphicsInsertIndex(): number {
+	const overlay = editor().scenes.getActiveScene().tracks.overlay;
+	let index = 0;
+	while (
+		index < overlay.length &&
+		overlay[index].elements.some((element) => element.name.endsWith(CUTOUT_SUFFIX))
+	) {
+		index++;
+	}
+	return index;
+}

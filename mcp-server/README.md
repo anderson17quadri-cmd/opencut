@@ -21,7 +21,7 @@ The extension is a small stdio MCP server. Each tool is a POST to
 it to the open window (see `opencut-classic/apps/web/src/agent`). Nothing
 leaves the computer.
 
-Tools (44), roughly what a professional editor does:
+Tools (48), roughly what a professional editor does:
 
 - **Project**: `get_state`, `list_projects`, `create_project`, `open_project`,
   `set_project` (9:16 / 16:9 / 1:1 / 4:5…, fps, colour or blurred background).
@@ -42,6 +42,14 @@ Tools (44), roughly what a professional editor does:
   layer), `update_effect`, `remove_effect` — blur, colour adjustment,
   black & white, sepia, vignette, sharpen, chroma key; `add_mask`,
   `remove_mask`.
+- **Motion graphics from code**: `preview_motion_graphic` and
+  `create_motion_graphic`. Claude writes a 2D canvas or three.js
+  `render(t)`; it runs in a sandboxed iframe (opaque origin, no network)
+  and is rendered to a transparent WebM on its own layer. Use it for
+  titles, VS cards, explainers, 3D objects and end cards.
+- **AI cutout**: `cutout_person` separates the presenter from the
+  background (MediaPipe, on device) into an aligned top layer, so graphics
+  can sit behind them. `move_layer` reorders layers.
 - **Transitions**: `add_transition` (crossfade, dip to black, slides, zoom;
   one pair or every cut), overlapping with spare footage when there is
   some, otherwise pulling later clips in.
