@@ -9,6 +9,20 @@ const nextConfig: NextConfig = {
 	reactStrictMode: true,
 	productionBrowserSourceMaps: true,
 	output: "standalone",
+	// Motion graphics run in an opaque-origin sandboxed iframe (see
+	// src/agent/motion-graphics.ts), which loads vendored libraries such as
+	// three.js as module scripts — those need CORS.
+	async headers() {
+		return [
+			{
+				source: "/vendor/:path*",
+				headers: [
+					{ key: "Access-Control-Allow-Origin", value: "*" },
+					{ key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+				],
+			},
+		];
+	},
 	images: {
 		remotePatterns: [
 			{

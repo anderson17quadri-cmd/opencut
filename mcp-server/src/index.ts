@@ -27,6 +27,7 @@ Editing:
 - Layout: set_clip_properties places any visual clip with anchor (top-left … bottom-right, center) plus margin, or x/y (centre, % of the frame), and sizes it with widthPercent/heightPercent. It also styles text (font, size, colour, bold, background box), opacity, rotation, blend mode.
 - Titles: add_text, then set_clip_properties to style and place it, then animate for motion.
 - Icons, emojis, logos and flags: search_icons (English keywords) then add_icon. Shapes (boxes, circles, bars behind text): add_shape.
+- Motion graphics (animated titles, VS cards, animated explainers/recipes/infographics, counters, 3D objects, floating screens, end cards, anything the built-in tools can't do): write code for create_motion_graphic; iterate with preview_motion_graphic first. Use search_icons ids as images for logos.
 - Animation: animate with a preset (fade_in, fade_out, pop_in, slide_in_left, zoom_in for a Ken Burns effect, …) or custom keyframes. For audio, fade_in/fade_out ramp the volume.
 - Looks: list_effects, then add_effect on one clip (clipId) or on every video/image clip in a time range (no clipId). Available: blur, colour adjustment (brightness, contrast, saturation, exposure, temperature…), black & white, sepia, vignette, sharpen, chroma key (green screen removal). add_mask cuts a clip to a shape (circle, heart, star, cinematic bars…).
 - Format for Reels/TikTok/Shorts: set_project aspectRatio "9:16"; YouTube: "16:9"; Instagram feed: "4:5" or "1:1". Then check framing with view_frames and adjust clip scale/position.
@@ -38,6 +39,24 @@ Slow operations (export, transcription, captions, silence removal, downloads) ma
 
 Finish with export_video: it renders and saves under the user's Videos\\OpenCut folder; tell the user the path it returns.
 If a tool says OpenCut is not open, ask the user to open the OpenCut app and try again. Reply to the user in their language.`;
+
+const MOTION_GUIDE = `Write JavaScript that defines render(api) (and optionally setup(api)). It is called once per frame with api.t = time in seconds (0 … duration) and api.progress (0 … 1). Compute everything from t (frames may be rendered in any order); no imports, network or DOM.
+
+mode "2d" (default): draw on api.ctx, a CanvasRenderingContext2D of api.width × api.height (the video size, e.g. 1080×1920 for 9:16). It starts transparent and cleared every frame, so only what you draw covers the video below.
+mode "three": api.THREE (three.js r170), api.scene, api.camera (PerspectiveCamera, fov 35, at z=12 looking at the origin) and api.renderer are ready. Build meshes/lights in setup(api), store them on api.state, move them in render(api); the scene is rendered automatically after render. Transparent background.
+
+Helpers: api.tween(t, t0, t1, from, to, easing) eases a value between two times (clamped); api.ease.{linear,in,out,inOut,back,elastic,bounce}; api.lerp, api.clamp; api.roundRect(ctx, x, y, w, h, radius) then ctx.fill(); api.images.name = ImageBitmaps from the images param; fonts: pass fonts: ["Montserrat"] and use ctx.font = "800 96px Montserrat".
+
+Example (2d title that pops in and out):
+function render({ ctx, t, width, height, tween, ease, duration }) {
+  const s = tween(t, 0, 0.5, 0, 1, ease.back) * tween(t, duration - 0.4, duration, 1, 0);
+  ctx.translate(width / 2, height * 0.2); ctx.scale(s, s);
+  ctx.font = "900 110px Montserrat"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillStyle = "#fff"; ctx.shadowColor = "rgba(0,0,0,.5)"; ctx.shadowBlur = 30;
+  ctx.fillText("QUEM EDITA MELHOR?", 0, 0);
+}
+
+Design tips: keep safe margins (~6% of the frame), large bold type for mobile, 2-4 colours, ease in/out every motion (0.3-0.6 s), stagger elements, leave the presenter's face clear unless the graphic is fullscreen.`;
 
 type ToolContent =
 	| { type: "text"; text: string }
@@ -161,8 +180,8 @@ async function checkTask(taskId: string): Promise<ToolResult> {
 }
 
 /** view_frames returns JPEGs; hand them to Claude as images. */
-async function callViewFrames(args: Record<string, unknown>) {
-	const result = await callOpenCut("view_frames", args);
+async function callViewFrames(args: Record<string, unknown>, tool = "view_frames") {
+	const result = await callOpenCut(tool, args);
 	if (result.isError) return result;
 	const first = result.content[0];
 	if (first.type === "text" && first.text.startsWith("OpenCut is still working")) return result;
@@ -785,6 +804,47 @@ server.registerTool(
 		},
 	},
 	(args) => callOpenCut("download_media", args),
+);
+
+const motionInputs = {
+	code: z.string().min(1).describe("JavaScript defining render(api) and optionally setup(api); see the tool description"),
+	mode: z.enum(["2d", "three"]).optional().describe('"2d" canvas drawing (default) or "three" for 3D with three.js'),
+	duration: z.number().min(0.1).max(120).optional().describe("Seconds, default 5"),
+	width: z.number().int().min(16).max(3840).optional().describe("Default: project width"),
+	height: z.number().int().min(16).max(3840).optional().describe("Default: project height"),
+	fps: z.number().int().min(1).max(60).optional().describe("Default: project frame rate"),
+	fonts: z.array(z.string()).max(6).optional().describe("Google Fonts families to load"),
+	images: z
+		.record(z.string(), z.string())
+		.optional()
+		.describe('Images for the code as api.images[name]: "icon:<iconId from search_icons>[~hexcolour]" or "media:<mediaId of an imported image>"'),
+};
+
+server.registerTool(
+	"preview_motion_graphic",
+	{
+		title: "Preview a motion graphic",
+		description: `Render a few frames of motion-graphic code and return them as images (transparent areas shown as a checkerboard) without adding anything to the project. Use it to iterate on the design before create_motion_graphic.\n\n${MOTION_GUIDE}`,
+		inputSchema: {
+			...motionInputs,
+			times: z.array(z.number().min(0)).max(8).optional().describe("Seconds to render; default start, middle, end"),
+		},
+	},
+	(args) => callViewFrames(args, "preview_motion_graphic"),
+);
+
+server.registerTool(
+	"create_motion_graphic",
+	{
+		title: "Create a motion graphic",
+		description: `Create an animated graphic from code — titles, lower thirds, "VS" cards, logos flying in, animated lists/recipes/infographics, counters, charts, callouts, 3D objects (e.g. a house that opens up), floating screens, end cards — rendered to a transparent video clip and placed on a new top layer at start (default: the playhead). Everything under transparent pixels stays visible.\n\n${MOTION_GUIDE}`,
+		inputSchema: {
+			...motionInputs,
+			name: z.string().optional().describe("Clip name"),
+			start: z.number().min(0).optional().describe("Timeline seconds; default the playhead"),
+		},
+	},
+	(args) => callOpenCut("create_motion_graphic", args),
 );
 
 server.registerTool(

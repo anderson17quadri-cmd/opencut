@@ -4,6 +4,7 @@ import { createCanvasSurface } from "./canvas-utils";
 import { buildFrameDescriptor } from "./compositor/frame-descriptor";
 import { wasmCompositor } from "./compositor/wasm-compositor";
 import { resolveRenderTree } from "./resolve";
+import { type VideoCache, videoCache as sharedVideoCache } from "@/services/video-cache/service";
 import {
 	measureSpanAsync,
 	measureSpanSync,
@@ -14,6 +15,13 @@ export type CanvasRendererParams = {
 	width: number;
 	height: number;
 	fps: FrameRate;
+	/**
+	 * Where video frames come from. Offline renders (export, snapshots,
+	 * frame previews) pass their own cache: sharing the preview's makes a
+	 * newer request for the playhead frame supersede theirs, and they get
+	 * a frame from the wrong time.
+	 */
+	videoCache?: VideoCache;
 };
 
 export class CanvasRenderer {
@@ -22,11 +30,13 @@ export class CanvasRenderer {
 	width: number;
 	height: number;
 	fps: FrameRate;
+	videoCache: VideoCache;
 
-	constructor({ width, height, fps }: CanvasRendererParams) {
+	constructor({ width, height, fps, videoCache }: CanvasRendererParams) {
 		this.width = width;
 		this.height = height;
 		this.fps = fps;
+		this.videoCache = videoCache ?? sharedVideoCache;
 
 		const surface = createCanvasSurface({ width, height });
 		this.canvas = surface.canvas;

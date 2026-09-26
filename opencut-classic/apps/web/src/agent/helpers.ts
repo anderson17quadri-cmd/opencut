@@ -1,4 +1,6 @@
+import { TracksSnapshotCommand } from "@/commands";
 import { EditorCore } from "@/core";
+import { processMediaAssets } from "@/media/processing";
 import type { TimelineElement, TimelineTrack } from "@/timeline";
 import {
 	type MediaTime,
@@ -116,5 +118,50 @@ export function insertAndFind(
 		if (element) return { track, element };
 	}
 	throw new Error("The editor rejected the clip (overlap or unsupported track).");
+}
+
+
+/** Imports a file into the open project's media, like dropping it in. */
+export async function importMediaFile(file: File) {
+	const project = requireOpenProject();
+	const [processed] = await processMediaAssets({ files: [file] });
+	if (!processed) throw new Error(`Could not import ${file.name}`);
+
+	const asset = await editor().media.addMediaAsset({
+		projectId: project.metadata.id,
+		asset: processed,
+	});
+	if (!asset) throw new Error(`Could not save ${file.name} (storage full?)`);
+
+	return {
+		mediaId: asset.id,
+		name: asset.name,
+		type: asset.type,
+		durationSeconds: asset.duration,
+		width: asset.width,
+		height: asset.height,
+	};
+}
+
+/**
+ * Runs `run`, which must apply its edits by calling commands' execute()
+ * directly, then records the whole change as a single undoable step.
+ */
+export async function asOneStep<T>(run: () => T | Promise<T>): Promise<T> {
+	const before = editor().scenes.getActiveScene().tracks;
+	let result: T;
+	try {
+		result = await run();
+	} catch (error) {
+		editor().timeline.updateTracks(before);
+		throw error;
+	}
+	const after = editor().scenes.getActiveScene().tracks;
+	if (after !== before) {
+		editor().command.execute({
+			command: new TracksSnapshotCommand({ before, after }),
+		});
+	}
+	return result;
 }
 

@@ -3,6 +3,7 @@ import type { RootNode } from "@/services/renderer/nodes/root-node";
 import type { ExportOptions, ExportResult } from "@/export";
 import type { MediaTime } from "@/wasm";
 import { CanvasRenderer } from "@/services/renderer/canvas-renderer";
+import { VideoCache } from "@/services/video-cache/service";
 import { SceneExporter } from "@/services/renderer/scene-exporter";
 import { buildScene } from "@/services/renderer/scene-builder";
 import { createTimelineAudioBuffer } from "@/media/audio";
@@ -85,8 +86,11 @@ export class RendererManager {
 	 */
 	async renderFrameToCanvas({
 		time,
+		videoCache,
 	}: {
 		time?: MediaTime;
+		/** Pass one cache for a batch of frames; a fresh one is used otherwise. */
+		videoCache?: VideoCache;
 	} = {}): Promise<{ canvas: HTMLCanvasElement; time: MediaTime }> {
 		const renderTree = this.getRenderTree();
 		const activeProject = this.editor.project.getActive();
@@ -106,21 +110,27 @@ export class RendererManager {
 			this.editor.timeline.getLastFrameTime(),
 		) as MediaTime;
 
+		const ownCache = videoCache ? null : new VideoCache();
 		const renderer = new CanvasRenderer({
 			width: canvasSize.width,
 			height: canvasSize.height,
 			fps,
+			videoCache: videoCache ?? ownCache ?? undefined,
 		});
 
 		const canvas = document.createElement("canvas");
 		canvas.width = canvasSize.width;
 		canvas.height = canvasSize.height;
 
-		await renderer.renderToCanvas({
-			node: renderTree,
-			time: renderTime,
-			targetCanvas: canvas,
-		});
+		try {
+			await renderer.renderToCanvas({
+				node: renderTree,
+				time: renderTime,
+				targetCanvas: canvas,
+			});
+		} finally {
+			ownCache?.clearAll();
+		}
 
 		return { canvas, time: renderTime };
 	}

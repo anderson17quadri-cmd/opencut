@@ -198,6 +198,14 @@
       "description": "Baixar vídeo, música ou imagem da internet"
     },
     {
+      "name": "preview_motion_graphic",
+      "description": "Pré-visualizar uma animação (motion graphics)"
+    },
+    {
+      "name": "create_motion_graphic",
+      "description": "Criar animações por código: títulos, infográficos, 3D"
+    },
+    {
       "name": "check_task",
       "description": "Esperar uma tarefa demorada terminar"
     }

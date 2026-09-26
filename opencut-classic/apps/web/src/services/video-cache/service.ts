@@ -278,9 +278,13 @@ export class VideoCache {
 				throw new Error("Video codec not supported for decoding");
 			}
 
+			// Keep transparency for videos with an alpha channel (motion
+			// graphics, person cutouts); others decode opaque as before.
+			const transparent = await videoTrack.canBeTransparent().catch(() => false);
 			const sink = new CanvasSink(videoTrack, {
 				poolSize: 3,
 				fit: "contain",
+				alpha: transparent,
 			});
 
 			this.sinks.set(mediaId, {

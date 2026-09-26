@@ -1,5 +1,4 @@
 import { frameRateToFloat } from "@/fps/utils";
-import { processMediaAssets } from "@/media/processing";
 import type { ExportFormat, ExportQuality } from "@/export";
 import { DEFAULT_EXPORT_OPTIONS } from "@/export/defaults";
 import type { MediaTime } from "@/wasm";
@@ -17,6 +16,7 @@ import {
 	editor,
 	findElement,
 	fromSeconds,
+	importMediaFile,
 	insertAndFind,
 	num,
 	optNum,
@@ -117,7 +117,7 @@ async function openProject(args: Args, navigate: Navigate) {
 }
 
 async function addMedia(args: Args) {
-	const project = requireOpenProject();
+	requireOpenProject();
 	const path = str(args, "path");
 
 	const response = await fetch(
@@ -134,24 +134,7 @@ async function addMedia(args: Args) {
 		response.headers.get("x-file-name") ?? "media",
 	);
 	const file = new File([blob], name, { type: blob.type });
-
-	const [processed] = await processMediaAssets({ files: [file] });
-	if (!processed) throw new Error(`Could not import ${name}`);
-
-	const asset = await editor().media.addMediaAsset({
-		projectId: project.metadata.id,
-		asset: processed,
-	});
-	if (!asset) throw new Error(`Could not save ${name} (storage full?)`);
-
-	return {
-		mediaId: asset.id,
-		name: asset.name,
-		type: asset.type,
-		durationSeconds: asset.duration,
-		width: asset.width,
-		height: asset.height,
-	};
+	return importMediaFile(file);
 }
 
 function addToTimeline(args: Args) {

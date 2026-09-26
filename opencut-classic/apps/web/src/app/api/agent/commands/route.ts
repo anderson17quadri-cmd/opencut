@@ -23,6 +23,8 @@ const SLOW_TOOL_TIMEOUT_MS: Record<string, number> = {
 	remove_silences: 10 * 60_000,
 	view_frames: 5 * 60_000,
 	add_transition: 5 * 60_000,
+	create_motion_graphic: 30 * 60_000,
+	preview_motion_graphic: 5 * 60_000,
 };
 
 const str = (value: unknown) => (typeof value === "string" ? value : "");

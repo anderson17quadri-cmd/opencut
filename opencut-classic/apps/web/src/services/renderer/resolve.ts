@@ -19,7 +19,6 @@ import {
 } from "@/text/measure-element";
 import { resolveColorAtTime, resolveOpacityAtTime } from "@/animation/values";
 import { resolveTransformAtTime } from "@/rendering/animation-values";
-import { videoCache } from "@/services/video-cache/service";
 import type { CanvasRenderer } from "./canvas-renderer";
 import type { AnyBaseNode } from "./nodes/base-node";
 import {
@@ -202,7 +201,7 @@ async function resolveVideoNode({
 			clipTime,
 			retime: node.params.retime,
 		});
-	const frame = await videoCache.getFrameAt({
+	const frame = await context.renderer.videoCache.getFrameAt({
 		mediaId: node.params.mediaId,
 		file: node.params.file,
 		time: mediaTimeToSeconds({ time: roundMediaTime({ time: sourceTimeTicks }) }),
@@ -387,7 +386,7 @@ async function resolveBlurBackgroundNode({
 		return null;
 	}
 
-	const backdropSource = await resolveBackdropSource({ node, clipTime });
+	const backdropSource = await resolveBackdropSource({ node, clipTime, renderer: context.renderer });
 	if (!backdropSource) {
 		return null;
 	}
@@ -412,9 +411,11 @@ async function resolveBlurBackgroundNode({
 async function resolveBackdropSource({
 	node,
 	clipTime,
+	renderer,
 }: {
 	node: BlurBackgroundNode;
 	clipTime: number;
+	renderer: CanvasRenderer;
 }): Promise<BackdropSource | null> {
 	if (node.params.mediaType === "video") {
 		const sourceTimeTicks =
@@ -423,7 +424,7 @@ async function resolveBackdropSource({
 				clipTime,
 				retime: node.params.retime,
 			});
-		const frame = await videoCache.getFrameAt({
+		const frame = await renderer.videoCache.getFrameAt({
 			mediaId: node.params.mediaId,
 			file: node.params.file,
 			time: mediaTimeToSeconds({ time: roundMediaTime({ time: sourceTimeTicks }) }),

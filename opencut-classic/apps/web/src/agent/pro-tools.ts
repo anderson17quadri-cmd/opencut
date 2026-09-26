@@ -20,6 +20,7 @@ import { decodeAudioToFloat32 } from "@/media/audio";
 import { extractTimelineAudio } from "@/media/mediabunny";
 import type { ParamValue, ParamValues } from "@/params";
 import { transcriptionService } from "@/services/transcription/service";
+import { VideoCache } from "@/services/video-cache/service";
 import { resolveStickerIntrinsicSize } from "@/stickers";
 import { insertCaptionChunksAsTextTrack } from "@/subtitles/insert";
 import type { SubtitleCue, SubtitleStyleOverrides } from "@/subtitles/types";
@@ -42,6 +43,7 @@ import type { MediaTime } from "@/wasm";
 import {
 	type Args,
 	allTracks,
+	asOneStep,
 	describeElement,
 	editor,
 	findElement,
@@ -52,6 +54,7 @@ import {
 	str,
 	toSeconds,
 } from "./helpers";
+import { runGraphicsTool } from "./graphics-tools";
 import {
 	ANCHORS,
 	type Anchor,
@@ -102,28 +105,6 @@ function nextPaint(): Promise<void> {
 	return new Promise((resolve) =>
 		requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
 	);
-}
-
-/**
- * Runs `run`, which must apply its edits by calling commands' execute()
- * directly, then records the whole change as a single undoable step.
- */
-async function asOneStep<T>(run: () => T | Promise<T>): Promise<T> {
-	const before = tracks();
-	let result: T;
-	try {
-		result = await run();
-	} catch (error) {
-		editor().timeline.updateTracks(before);
-		throw error;
-	}
-	const after = tracks();
-	if (after !== before) {
-		editor().command.execute({
-			command: new TracksSnapshotCommand({ before, after }),
-		});
-	}
-	return result;
 }
 
 /** Inserts an element and returns where it landed. */
@@ -200,18 +181,26 @@ async function viewFrames(args: Args) {
 
 	const frames = [];
 	for (const seconds of requested) {
-		const { canvas, time } = await e.renderer.renderFrameToCanvas({
-			time: fromSeconds(Math.max(0, seconds)),
-		});
-		const scale = Math.min(1, maxWidth / canvas.width);
-		const out = document.createElement("canvas");
-		out.width = Math.round(canvas.width * scale);
-		out.height = Math.round(canvas.height * scale);
-		out.getContext("2d")?.drawImage(canvas, 0, 0, out.width, out.height);
-		frames.push({
-			time: toSeconds(time),
-			image: out.toDataURL("image/jpeg", 0.82).split(",")[1],
-		});
+		// A fresh cache per frame: each frame is decoded by seeking straight
+		// to its time instead of reusing whatever frame a cache holds.
+		const videoCache = new VideoCache();
+		try {
+			const { canvas, time } = await e.renderer.renderFrameToCanvas({
+				time: fromSeconds(Math.max(0, seconds)),
+				videoCache,
+			});
+			const scale = Math.min(1, maxWidth / canvas.width);
+			const out = document.createElement("canvas");
+			out.width = Math.round(canvas.width * scale);
+			out.height = Math.round(canvas.height * scale);
+			out.getContext("2d")?.drawImage(canvas, 0, 0, out.width, out.height);
+			frames.push({
+				time: toSeconds(time),
+				image: out.toDataURL("image/jpeg", 0.82).split(",")[1],
+			});
+		} finally {
+			videoCache.clearAll();
+		}
 	}
 	return { frames };
 }
@@ -1666,7 +1655,7 @@ export async function runProTool({
 		case "add_transition":
 			return addTransition(args);
 		default:
-			throw new Error(`Unknown tool: ${tool}`);
+			return runGraphicsTool({ tool, args });
 	}
 }
 

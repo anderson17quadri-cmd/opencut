@@ -18,6 +18,7 @@ import { TICKS_PER_SECOND } from "@/wasm";
 import { frameRateToFloat } from "@/fps/utils";
 import type { RootNode } from "./nodes/root-node";
 import type { ExportFormat, ExportQuality } from "@/export";
+import { VideoCache } from "@/services/video-cache/service";
 import { CanvasRenderer } from "./canvas-renderer";
 
 type ExportParams = {
@@ -67,6 +68,7 @@ export class SceneExporter extends EventEmitter<SceneExporterEvents> {
 			width,
 			height,
 			fps,
+			videoCache: this.videoCache,
 		});
 
 		this.format = format;
@@ -79,7 +81,22 @@ export class SceneExporter extends EventEmitter<SceneExporterEvents> {
 		this.isCancelled = true;
 	}
 
+	/** Frames for the export only, so the live preview can't hand it stale ones. */
+	private videoCache = new VideoCache();
+
 	async export({
+		rootNode,
+	}: {
+		rootNode: RootNode;
+	}): Promise<ArrayBuffer | null> {
+		try {
+			return await this.exportFrames({ rootNode });
+		} finally {
+			this.videoCache.clearAll();
+		}
+	}
+
+	private async exportFrames({
 		rootNode,
 	}: {
 		rootNode: RootNode;
