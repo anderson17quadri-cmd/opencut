@@ -1,0 +1,2620 @@
+{
+ "version": "0.8.0",
+ "instructions": "You control OpenCut, a video editor running on the user's computer. Every change you make appears live in the OpenCut window, and the user can undo it there too (Ctrl+Z), so edit boldly but check your work. Work like a professional video editor.\n\nBasics:\n- Times are always in seconds. Keyframe times in animate are seconds from the clip's own start.\n- Start with get_state: project format, tracks, clips (ids, timing, layout on screen, text style, effects, animations) and imported media. Re-read it after edits instead of guessing ids.\n- If no project is open, use list_projects + open_project, or create_project.\n- To bring in the user's files: list_media_files (Videos, Downloads, Desktop, Music, Pictures by default), add_media with the full path, then add_to_timeline. Clips that overlap in time go on separate layers; later layers are drawn on top.\n- Look at the result with view_frames whenever layout or looks matter (titles, icons, captions, colour, masks). It returns images of the actual frames.\n\nEditing:\n- Remove a section of the whole video with cut_range (later clips move left, no gap). For one clip only, split_clip + delete_clips, or trim_clip.\n- remove_silences cuts pauses from talking videos (find_silences previews them). transcribe gives what is said with timestamps, useful to cut by content or to write chapters, titles and descriptions.\n- Social-media captions where the spoken word lights up: generate_captions with style \"karaoke\".\n- Objects in the presenter's hand (logos floating in the palm, following it): create the object (add_icon / create_motion_graphic small, e.g. widthPercent 18), then follow_hand with the talking-head clip; combine with cutout_person to let it pass behind them.\n- Captions: generate_captions transcribes the audio and adds styled captions on their own track (the first run downloads a speech model, which can take a few minutes). add_captions adds captions you write yourself (e.g. translations). Restyle them all later with set_clip_properties using the captions trackId. fontSize ≈ percent of video height × 0.9 (5 = normal captions, 8 = big social-media captions).\n- Layout: set_clip_properties places any visual clip with anchor (top-left … bottom-right, center) plus margin, or x/y (centre, % of the frame), and sizes it with widthPercent/heightPercent. It also styles text (font, size, colour, bold, background box), opacity, rotation, blend mode.\n- Titles: add_text, then set_clip_properties to style and place it, then animate for motion.\n- Designer animations (animated emojis/icons, arrows pointing, confetti, checkmarks, like/subscribe/follow buttons, lower thirds, transitions): search_animations then add_animation — prefer these over coding the same thing. Icons, emojis, logos and flags (static): search_icons (English keywords) then add_icon. Shapes (boxes, circles, bars behind text): add_shape.\n- Layers: tracks listed first in get_state are drawn on top. move_layer brings a layer to the front/back or above/below another.\n- Graphics behind the presenter (logos floating behind them, text behind the head, 3D screens in the background, \"the scene splits into layers\"): run cutout_person on the talking-head clip; motion graphics created before or after it land under the cutout, so they appear between the background and the person. Use move_layer for other clips (icons, text) that should go behind.\n- Motion graphics (animated titles, VS cards, animated explainers/recipes/infographics, counters, 3D objects, floating screens, end cards, anything the built-in tools can't do): write code for create_motion_graphic; iterate with preview_motion_graphic first. Use search_icons ids as images for logos.\n- Animation: animate with a preset (fade_in, fade_out, pop_in, slide_in_left, zoom_in for a Ken Burns effect, …) or custom keyframes. For audio, fade_in/fade_out ramp the volume.\n- Looks: list_effects, then add_effect on one clip (clipId) or on every video/image clip in a time range (no clipId). Available: blur, colour adjustment (brightness, contrast, saturation, exposure, temperature…), black & white, sepia, vignette, sharpen, chroma key (green screen removal). add_mask cuts a clip to a shape (circle, heart, star, cinematic bars…).\n- Format for Reels/TikTok/Shorts: set_project aspectRatio \"9:16\"; YouTube: \"16:9\"; Instagram feed: \"4:5\" or \"1:1\" (a format chosen this way is kept when footage of another shape is added). Then check framing with view_frames and adjust clip scale/position.\n- Music: add_media the audio file, add_to_timeline, set_volume (e.g. -18 dB under speech), animate fade_out at the end.\n- Transitions between shots: add_transition (crossfade, fade_black, slides, zoom), or all=true for every cut.\n- From the internet: when the user asks for music, sound effects, images or b-roll, search_free_media then download_media (it also imports the file). For a link the user gives, download_media directly. YouTube/Instagram/TikTok pages can't be downloaded. Credits are collected automatically into a text file next to the exported video.\n- Pictures for what is being said (automatic b-roll — \"put images when I mention something\"): 1) transcribe with words=true; 2) pick the concrete references worth illustrating (products, brands, places, people, objects, foods, numbers/events) — usually one every 3-8 s, not every noun; 3) for each, search_free_media type \"image\" with English keywords: it returns preview pictures, look at them and choose the one that really shows the thing (skip it if none fits); 4) add_web_image with that url, start = the time the word is spoken (≈0.1 s before), duration 2-4 s, style \"card\" (pop-up photo, anchor \"top\" on vertical videos so the face stays clear), \"fullscreen\" (cutaway covering the frame) or \"plain\"; alternate positions/styles for variety; sound \"pop\" (cards) or \"whoosh\" (fullscreen) gives the pro feel; 5) view_frames at a few of those times to check (keep faces and burned-in captions clear). For a logo, prefer search_icons + add_icon. Never write credits on the video: author and licence of everything downloaded are recorded automatically, and export_video writes a \"<video> - créditos.txt\" file next to the video (creditsFile) that the user can paste into the post caption if they want — tell them where it is.\n\nEditing like a human editor (when the user asks for a professional/viral/\"like that video\" edit of a talking-head video, do all of this; for smaller asks, pick what fits):\n1. Understand it first: get_state, view_frames at 4-6 times, transcribe words=true. Read the whole script: find the hook, key points, lists, numbers, brand/product/place mentions, reveals, jokes and the call to action.\n2. Clean cut first (it shifts every time after it): remove_silences with tight pacing (minDuration 0.35-0.5, padding 0.08-0.12) and cut_range for false starts or repeated takes you spot in the transcript. Transcribe again afterwards.\n3. Format and framing: set_project 9:16 for Reels/TikTok/Shorts, fill the frame with the talking head, check with view_frames.\n4. Hook in the first 2 s: a bold animated title (create_motion_graphic) with an impact or whoosh, plus a punch-in on the first sentence.\n5. Keep it moving: something should change every 2-4 s. punch_zoom on emphasis words (style \"cut\", alternate ~1.12 and ~1.25, return to wide in between; \"push\" for slow build-ups), pictures at mentions (add_web_image), graphics for lists/numbers/comparisons, icons. Never more than two new things at once, and keep the face clear.\n6. Captions: generate_captions style \"karaoke\", 2-3 words per caption, in the lower third, clear of the face and graphics.\n7. One or two signature moments where the script allows (talking about layers, how something is made, a reveal): explode_layers (the scene turns into 3D glass layers with numbered labels), cutout_person + graphics behind the presenter, follow_hand for objects in the hand, 3D motion graphics (floating screens, objects that explode into parts), picture-in-picture next to an animated explainer.\n8. Sound design: every graphic entrance gets a sound (add_sound_effect or the sound option): pop for small pop-ups, whoosh for movement and transitions, impact for big titles/reveals, click for UI and list items, ding for checkmarks/prices/success, riser to build up to a reveal. Sounds around -8 dB. Music: search_free_media type \"music\" matching the mood, under the whole video, then duck_music so it dips while the person talks.\n9. Look: a light grade on the talking head (add_effect colour adjustment: a bit more contrast and saturation, slight vignette).\n10. End with a call-to-action graphic in the last 2-3 s (follow/save/comment) with a ding.\n11. Review like an editor: view_frames at every element you added and at a few random times; fix overlaps (captions vs graphics vs face), bad timing and anything cut off; then export_video. Tell the user, briefly, the edit decisions you made and where the file and credits are.\n\nOrder matters: timing edits (cuts, speed) → punch_zoom → colour grade → cutout_person → graphics, pictures, hand-tracked objects → explode_layers (it bakes the frame as it looks then, so do it after the zooms under it) → captions → sounds and music (duck_music last, once the timing is final) → review → export.\n\nSlow operations (export, transcription, captions, silence removal, downloads, motion graphics, cutouts, 3D layers, frame previews) may answer \"still working\" with a taskId: call check_task with it until you get the result.\n\nFinish with export_video: it renders and saves under the user's Videos\\OpenCut folder; tell the user the path it returns.\nIf a tool says OpenCut is not open, ask the user to open the OpenCut app and try again. Reply to the user in their language.",
+ "tools": [
+  {
+   "name": "get_state",
+   "title": "Get project state",
+   "description": "Open project (size, fps), playhead, tracks and clips (ids, start/end in seconds, on-screen layout in % of the frame, text and style, speed, volume, effects, masks, animated properties) and imported media.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {}
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "list_media_files",
+   "title": "List media files",
+   "description": "List video, audio and image files in a folder. Without a folder, lists the user's Videos, Downloads, Desktop, Music and Pictures folders.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "folder": {
+      "type": "string",
+      "description": "Absolute folder path"
+     }
+    },
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "list_projects",
+   "title": "List projects",
+   "description": "List the user's OpenCut projects.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {}
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "create_project",
+   "title": "Create project",
+   "description": "Create a new empty project and open it in OpenCut.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "open_project",
+   "title": "Open project",
+   "description": "Open an existing project (id from list_projects). Returns its state.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "projectId": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "projectId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "add_media",
+   "title": "Import media",
+   "description": "Import a video, audio or image file from disk into the open project's media library. Returns a mediaId for add_to_timeline.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "path": {
+      "type": "string",
+      "description": "Absolute path to the file"
+     }
+    },
+    "required": [
+     "path"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "add_to_timeline",
+   "title": "Add media to timeline",
+   "description": "Place imported media on the timeline. Without start, it is appended at the end. Without duration, the full media length is used (images default to a few seconds).",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "mediaId": {
+      "type": "string"
+     },
+     "start": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Seconds"
+     },
+     "duration": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Seconds"
+     }
+    },
+    "required": [
+     "mediaId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "add_text",
+   "title": "Add text",
+   "description": "Add a text overlay (title, label, call to action), centred on the frame. fontSize ≈ % of video height × 0.9 (default 15 is large; 8-10 for titles on busy footage). Style, place and animate it afterwards with set_clip_properties and animate.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "text": {
+      "type": "string"
+     },
+     "start": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Seconds"
+     },
+     "duration": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Seconds, default 3"
+     },
+     "fontSize": {
+      "type": "number",
+      "exclusiveMinimum": 0
+     },
+     "color": {
+      "type": "string",
+      "description": "Hex color, e.g. \"#ffffff\""
+     }
+    },
+    "required": [
+     "text",
+     "start"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "split_clip",
+   "title": "Split clip",
+   "description": "Split a clip in two at a timeline time. Returns the ids of the left and right pieces.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipId": {
+      "type": "string",
+      "description": "Clip id from get_state"
+     },
+     "time": {
+      "type": "number",
+      "description": "Timeline seconds"
+     }
+    },
+    "required": [
+     "clipId",
+     "time"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "delete_clips",
+   "title": "Delete clips",
+   "description": "Delete clips from the timeline. This leaves a gap where they were.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipIds": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "minItems": 1
+     }
+    },
+    "required": [
+     "clipIds"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "move_clip",
+   "title": "Move clip",
+   "description": "Move a clip to a new start time, optionally onto another track.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipId": {
+      "type": "string",
+      "description": "Clip id from get_state"
+     },
+     "start": {
+      "type": "number",
+      "minimum": 0,
+      "description": "New start, seconds"
+     },
+     "trackId": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "clipId",
+     "start"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "set_speed",
+   "title": "Set clip speed",
+   "description": "Change playback speed of a video or audio clip (0.1–10; 2 = twice as fast, 0.5 = slow motion, 1 = normal). Changes the clip's length.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipId": {
+      "type": "string",
+      "description": "Clip id from get_state"
+     },
+     "speed": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 10
+     }
+    },
+    "required": [
+     "clipId",
+     "speed"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "set_volume",
+   "title": "Set clip volume",
+   "description": "Change a video or audio clip's volume in decibels (0 = original, -6 = about half as loud, positive = louder) and/or mute it.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipId": {
+      "type": "string",
+      "description": "Clip id from get_state"
+     },
+     "volumeDb": {
+      "type": "number"
+     },
+     "muted": {
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "clipId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "seek",
+   "title": "Move playhead",
+   "description": "Move the playhead so the user sees that moment in the preview.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "time": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Seconds"
+     }
+    },
+    "required": [
+     "time"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "undo",
+   "title": "Undo",
+   "description": "Undo the last edit.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {}
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "redo",
+   "title": "Redo",
+   "description": "Redo the last undone edit.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {}
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "export_video",
+   "title": "Export video",
+   "description": "Render the timeline to a video file in the user's Videos\\OpenCut folder and return its path. If it uses pictures or sounds downloaded from the internet, a \"<video> - créditos.txt\" file with their authors and licences is saved next to it (creditsFile). Can take a while for long videos.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "description": "File name without extension; defaults to the project name"
+     },
+     "format": {
+      "type": "string",
+      "enum": [
+       "mp4",
+       "webm"
+      ],
+      "description": "Default mp4"
+     },
+     "quality": {
+      "type": "string",
+      "enum": [
+       "low",
+       "medium",
+       "high",
+       "very_high"
+      ],
+      "description": "Default high"
+     }
+    },
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "view_frames",
+   "title": "Look at frames",
+   "description": "Render frames of the edited video (with all layers, text, effects) and return them as images so you can see the result. Use it to check framing, titles, captions and colour.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "times": {
+      "type": "array",
+      "items": {
+       "type": "number",
+       "minimum": 0
+      },
+      "minItems": 1,
+      "maxItems": 8,
+      "description": "Timeline seconds to render; default the playhead"
+     },
+     "width": {
+      "type": "number",
+      "minimum": 160,
+      "maximum": 1280,
+      "description": "Image width in pixels, default 768"
+     }
+    },
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "set_clip_properties",
+   "title": "Style and place clips",
+   "description": "Change clips' position, size, rotation, opacity, blend mode and visibility; text content and style; shape colours; volume. Target clips by id and/or a whole track (e.g. all captions). Options that don't apply to a clip type are ignored and reported.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipIds": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "trackId": {
+      "type": "string",
+      "description": "Apply to every clip on this track"
+     },
+     "anchor": {
+      "type": "string",
+      "enum": [
+       "center",
+       "top",
+       "bottom",
+       "left",
+       "right",
+       "top-left",
+       "top-right",
+       "bottom-left",
+       "bottom-right"
+      ],
+      "description": "Snap the clip's box to this spot of the frame"
+     },
+     "margin": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 40,
+      "description": "Padding from the frame edge for anchor, % of the shorter side (default 5)"
+     },
+     "x": {
+      "type": "number",
+      "description": "Horizontal centre, % of frame width (0 = left edge, 50 = middle)"
+     },
+     "y": {
+      "type": "number",
+      "description": "Vertical centre, % of frame height (0 = top, 50 = middle)"
+     },
+     "widthPercent": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 400,
+      "description": "Width as % of the frame width (keeps aspect ratio unless heightPercent is also given)"
+     },
+     "heightPercent": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 400,
+      "description": "Height as % of the frame height"
+     },
+     "scale": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Absolute scale, 1 = fitted to the frame"
+     },
+     "rotation": {
+      "type": "number",
+      "minimum": -360,
+      "maximum": 360,
+      "description": "Degrees"
+     },
+     "opacity": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Percent"
+     },
+     "blendMode": {
+      "type": "string",
+      "enum": [
+       "normal",
+       "multiply",
+       "screen",
+       "overlay",
+       "darken",
+       "lighten",
+       "color-dodge",
+       "color-burn",
+       "hard-light",
+       "soft-light",
+       "difference",
+       "exclusion",
+       "hue",
+       "saturation",
+       "color",
+       "luminosity",
+       "plus-lighter"
+      ]
+     },
+     "hidden": {
+      "type": "boolean"
+     },
+     "text": {
+      "type": "string",
+      "description": "New text content"
+     },
+     "fontFamily": {
+      "type": "string",
+      "description": "Any Google Font name (e.g. \"Montserrat\", \"Bebas Neue\", \"Poppins\") or Arial"
+     },
+     "fontSize": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "≈ % of video height × 0.9; 5 = captions, 10 = title, 15 = default"
+     },
+     "color": {
+      "type": "string",
+      "description": "Hex colour, e.g. \"#ffcc00\""
+     },
+     "bold": {
+      "type": "boolean"
+     },
+     "italic": {
+      "type": "boolean"
+     },
+     "underline": {
+      "type": "boolean"
+     },
+     "align": {
+      "type": "string",
+      "enum": [
+       "left",
+       "center",
+       "right"
+      ]
+     },
+     "letterSpacing": {
+      "type": "number"
+     },
+     "lineHeight": {
+      "type": "number",
+      "exclusiveMinimum": 0
+     },
+     "background": {
+      "type": "string",
+      "description": "Text box colour (hex) or \"none\""
+     },
+     "backgroundRadius": {
+      "type": "number",
+      "minimum": 0
+     },
+     "backgroundPadding": {
+      "type": "number",
+      "minimum": 0
+     },
+     "fill": {
+      "$ref": "#/properties/color",
+      "description": "Shape fill colour"
+     },
+     "stroke": {
+      "$ref": "#/properties/color",
+      "description": "Shape outline colour"
+     },
+     "strokeWidth": {
+      "type": "number",
+      "minimum": 0
+     },
+     "cornerRadius": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Rounded corners for rectangles"
+     },
+     "volumeDb": {
+      "type": "number",
+      "minimum": -60,
+      "maximum": 20
+     },
+     "muted": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "animate",
+   "title": "Animate a clip",
+   "description": "Add motion to a clip with a preset or custom keyframes. Presets: fade_in, fade_out (also fade audio), zoom_in / zoom_out (slow Ken Burns zoom over the whole clip), slide_in_left|right|top|bottom, slide_out_left|right|top|bottom, pop_in, pop_out, spin, pulse, shake. Custom keyframes: property opacity (0-100), scale (multiplier of current size), x / y (centre, % of frame), rotation (degrees) or volume (dB), at times in seconds from the clip start.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipId": {
+      "type": "string",
+      "description": "Clip id from get_state"
+     },
+     "preset": {
+      "type": "string",
+      "enum": [
+       "fade_in",
+       "fade_out",
+       "zoom_in",
+       "zoom_out",
+       "slide_in_left",
+       "slide_in_right",
+       "slide_in_top",
+       "slide_in_bottom",
+       "slide_out_left",
+       "slide_out_right",
+       "slide_out_top",
+       "slide_out_bottom",
+       "pop_in",
+       "pop_out",
+       "spin",
+       "pulse",
+       "shake"
+      ]
+     },
+     "duration": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Length of in/out presets in seconds (default 0.5); pulse period; shake length"
+     },
+     "intensity": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "zoom factor (default 1.2), spin turns, pulse size (1.08), shake strength"
+     },
+     "keyframes": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "property": {
+         "type": "string",
+         "enum": [
+          "opacity",
+          "scale",
+          "x",
+          "y",
+          "rotation",
+          "volume"
+         ]
+        },
+        "time": {
+         "type": "number",
+         "minimum": 0,
+         "description": "Seconds from the clip start"
+        },
+        "value": {
+         "type": "number"
+        }
+       },
+       "required": [
+        "property",
+        "time",
+        "value"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "easing": {
+      "type": "string",
+      "enum": [
+       "linear",
+       "smooth"
+      ]
+     }
+    },
+    "required": [
+     "clipId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "remove_animations",
+   "title": "Remove animations",
+   "description": "Remove a clip's keyframes, for one property or all of them.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipId": {
+      "type": "string",
+      "description": "Clip id from get_state"
+     },
+     "property": {
+      "type": "string",
+      "enum": [
+       "opacity",
+       "scale",
+       "x",
+       "y",
+       "position",
+       "rotation",
+       "volume"
+      ]
+     }
+    },
+    "required": [
+     "clipId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "transcribe",
+   "title": "Transcribe speech",
+   "description": "Transcribe the timeline's audio on this computer and return what is said with start/end times (seconds). words=true returns every word with its own timing (for precise cuts or custom animated text). Nothing is changed. The first run downloads a speech model and can take a few minutes.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "language": {
+      "type": "string",
+      "enum": [
+       "pt",
+       "en",
+       "es",
+       "fr",
+       "it",
+       "de",
+       "ru",
+       "ja",
+       "zh"
+      ],
+      "description": "Spoken language; omit to auto-detect"
+     },
+     "words": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "generate_captions",
+   "title": "Generate captions",
+   "description": "Transcribe the timeline's audio and add captions. style \"classic\" (default): text clips on a new track, editable word by word with set_clip_properties (returns each caption's id). style \"karaoke\": social-media captions where the word being spoken lights up (highlightColor) and pops, short phrases, bold uppercase with outline — rendered as one animated clip (regenerate to change).",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "language": {
+      "type": "string",
+      "enum": [
+       "pt",
+       "en",
+       "es",
+       "fr",
+       "it",
+       "de",
+       "ru",
+       "ja",
+       "zh"
+      ],
+      "description": "Spoken language; omit to auto-detect"
+     },
+     "style": {
+      "type": "string",
+      "enum": [
+       "classic",
+       "karaoke"
+      ]
+     },
+     "highlightColor": {
+      "type": "string",
+      "description": "karaoke: colour of the spoken word (default yellow)"
+     },
+     "wordsPerCaption": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20,
+      "description": "Words per caption (default 3); 1-3 for fast social captions"
+     },
+     "fontFamily": {
+      "type": "string"
+     },
+     "fontSize": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Default 5; 7-9 for bold social-media captions"
+     },
+     "color": {
+      "$ref": "#/properties/highlightColor",
+      "description": "Hex colour, e.g. \"#ffcc00\""
+     },
+     "bold": {
+      "type": "boolean"
+     },
+     "background": {
+      "type": "string",
+      "description": "Box behind the text (hex) or \"none\""
+     },
+     "position": {
+      "type": "string",
+      "enum": [
+       "bottom",
+       "middle",
+       "top"
+      ]
+     },
+     "uppercase": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "add_captions",
+   "title": "Add captions",
+   "description": "Add captions you provide (e.g. translated or corrected) as text clips on a new track.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "captions": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "start": {
+         "type": "number",
+         "minimum": 0
+        },
+        "end": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "text": {
+         "type": "string",
+         "minLength": 1
+        }
+       },
+       "required": [
+        "start",
+        "end",
+        "text"
+       ],
+       "additionalProperties": false
+      },
+      "minItems": 1
+     },
+     "fontFamily": {
+      "type": "string"
+     },
+     "fontSize": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Default 5; 7-9 for bold social-media captions"
+     },
+     "color": {
+      "type": "string",
+      "description": "Hex colour, e.g. \"#ffcc00\""
+     },
+     "bold": {
+      "type": "boolean"
+     },
+     "background": {
+      "type": "string",
+      "description": "Box behind the text (hex) or \"none\""
+     },
+     "position": {
+      "type": "string",
+      "enum": [
+       "bottom",
+       "middle",
+       "top"
+      ]
+     },
+     "uppercase": {
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "captions"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "search_icons",
+   "title": "Search icons and emojis",
+   "description": "Search 200,000+ open-source icons, emojis, logos and flags (Iconify). Use English keywords. Returns ids like \"mdi:heart\" or \"fluent-emoji-flat:fire\" for add_icon.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "minLength": 1
+     },
+     "style": {
+      "type": "string",
+      "enum": [
+       "any",
+       "emoji",
+       "color",
+       "outline",
+       "solid",
+       "logos",
+       "flags"
+      ]
+     },
+     "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64
+     }
+    },
+    "required": [
+     "query"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "add_icon",
+   "title": "Add icon or emoji",
+   "description": "Put an icon/emoji/logo/flag from search_icons on the video, sized and placed on the frame (default: centre, 15% of the width).",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "iconId": {
+      "type": "string",
+      "description": "From search_icons, e.g. \"mdi:heart\""
+     },
+     "color": {
+      "type": "string",
+      "description": "Recolour single-colour icons"
+     },
+     "start": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Timeline seconds; default the playhead"
+     },
+     "duration": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Seconds, default 3"
+     },
+     "anchor": {
+      "type": "string",
+      "enum": [
+       "center",
+       "top",
+       "bottom",
+       "left",
+       "right",
+       "top-left",
+       "top-right",
+       "bottom-left",
+       "bottom-right"
+      ],
+      "description": "Snap the clip's box to this spot of the frame"
+     },
+     "margin": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 40,
+      "description": "Padding from the frame edge for anchor, % of the shorter side (default 5)"
+     },
+     "x": {
+      "type": "number",
+      "description": "Horizontal centre, % of frame width (0 = left edge, 50 = middle)"
+     },
+     "y": {
+      "type": "number",
+      "description": "Vertical centre, % of frame height (0 = top, 50 = middle)"
+     },
+     "widthPercent": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 400,
+      "description": "Width as % of the frame width (keeps aspect ratio unless heightPercent is also given)"
+     },
+     "heightPercent": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 400,
+      "description": "Height as % of the frame height"
+     }
+    },
+    "required": [
+     "iconId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "add_shape",
+   "title": "Add shape",
+   "description": "Add a shape (box behind text, highlight, circle, arrow-like triangle, star…). Give both widthPercent and heightPercent to stretch it (e.g. a lower-third bar).",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "shape": {
+      "type": "string",
+      "enum": [
+       "rectangle",
+       "square",
+       "circle",
+       "ellipse",
+       "triangle",
+       "diamond",
+       "pentagon",
+       "hexagon",
+       "star"
+      ]
+     },
+     "fill": {
+      "type": "string",
+      "description": "Hex colour, e.g. \"#ffcc00\""
+     },
+     "stroke": {
+      "$ref": "#/properties/fill",
+      "description": "Hex colour, e.g. \"#ffcc00\""
+     },
+     "strokeWidth": {
+      "type": "number",
+      "minimum": 0
+     },
+     "cornerRadius": {
+      "type": "number",
+      "minimum": 0
+     },
+     "opacity": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+     },
+     "start": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Timeline seconds; default the playhead"
+     },
+     "duration": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Seconds, default 3"
+     },
+     "anchor": {
+      "type": "string",
+      "enum": [
+       "center",
+       "top",
+       "bottom",
+       "left",
+       "right",
+       "top-left",
+       "top-right",
+       "bottom-left",
+       "bottom-right"
+      ],
+      "description": "Snap the clip's box to this spot of the frame"
+     },
+     "margin": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 40,
+      "description": "Padding from the frame edge for anchor, % of the shorter side (default 5)"
+     },
+     "x": {
+      "type": "number",
+      "description": "Horizontal centre, % of frame width (0 = left edge, 50 = middle)"
+     },
+     "y": {
+      "type": "number",
+      "description": "Vertical centre, % of frame height (0 = top, 50 = middle)"
+     },
+     "widthPercent": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 400,
+      "description": "Width as % of the frame width (keeps aspect ratio unless heightPercent is also given)"
+     },
+     "heightPercent": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 400,
+      "description": "Height as % of the frame height"
+     }
+    },
+    "required": [
+     "shape"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "list_effects",
+   "title": "List effects",
+   "description": "Effects available for add_effect, with their params and ranges.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {}
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "add_effect",
+   "title": "Add effect",
+   "description": "Apply an effect (see list_effects: blur, color-adjust, black-white, sepia, vignette, sharpen, chroma-key) to one clip with clipId, or without clipId to every video and image clip in a time range (default: the whole video) — e.g. a colour grade for the whole edit.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "effect": {
+      "type": "string",
+      "description": "Effect type from list_effects"
+     },
+     "clipId": {
+      "type": "string"
+     },
+     "params": {
+      "type": "object",
+      "additionalProperties": {
+       "type": [
+        "number",
+        "string",
+        "boolean"
+       ]
+      },
+      "description": "e.g. {\"brightness\": 10, \"saturation\": 20}"
+     },
+     "start": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Without clipId: range start (seconds)"
+     },
+     "duration": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Without clipId: range length (seconds)"
+     }
+    },
+    "required": [
+     "effect"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "update_effect",
+   "title": "Change effect settings",
+   "description": "Change params of an effect on a clip (effectId from get_state).",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipId": {
+      "type": "string",
+      "description": "Clip id from get_state"
+     },
+     "effectId": {
+      "type": "string",
+      "description": "Needed when the clip has more than one effect"
+     },
+     "params": {
+      "type": "object",
+      "additionalProperties": {
+       "type": [
+        "number",
+        "string",
+        "boolean"
+       ]
+      }
+     }
+    },
+    "required": [
+     "clipId",
+     "params"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "remove_effect",
+   "title": "Remove effect",
+   "description": "Remove one effect (effectId) or all effects from a clip, or delete an adjustment-layer clip.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipId": {
+      "type": "string",
+      "description": "Clip id from get_state"
+     },
+     "effectId": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "clipId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "add_mask",
+   "title": "Add mask",
+   "description": "Show only part of a video/image/shape clip: rectangle, ellipse (circle), heart, diamond, star, split, cinematic-bars (letterbox) or text. inverted hides that part instead.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipId": {
+      "type": "string",
+      "description": "Clip id from get_state"
+     },
+     "shape": {
+      "type": "string",
+      "enum": [
+       "rectangle",
+       "ellipse",
+       "heart",
+       "diamond",
+       "star",
+       "split",
+       "cinematic-bars",
+       "text"
+      ]
+     },
+     "inverted": {
+      "type": "boolean"
+     },
+     "feather": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Soft edge"
+     }
+    },
+    "required": [
+     "clipId",
+     "shape"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "remove_mask",
+   "title": "Remove mask",
+   "description": "Remove a clip's mask.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipId": {
+      "type": "string",
+      "description": "Clip id from get_state"
+     }
+    },
+    "required": [
+     "clipId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "set_project",
+   "title": "Project format",
+   "description": "Change the video format (aspectRatio \"9:16\" for Reels/TikTok/Shorts, \"16:9\" YouTube, \"1:1\", \"4:5\", \"4:3\", \"21:9\", or exact width/height), frame rate, and the background shown behind clips (colour or blurred video).",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "aspectRatio": {
+      "type": "string",
+      "enum": [
+       "16:9",
+       "9:16",
+       "1:1",
+       "4:5",
+       "4:3",
+       "21:9"
+      ]
+     },
+     "width": {
+      "type": "integer",
+      "minimum": 16,
+      "maximum": 7680
+     },
+     "height": {
+      "type": "integer",
+      "minimum": 16,
+      "maximum": 7680
+     },
+     "fps": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 240
+     },
+     "backgroundColor": {
+      "type": "string",
+      "description": "Hex colour, e.g. \"#ffcc00\""
+     },
+     "backgroundBlur": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Blurred copy of the video as background (good for vertical from horizontal)"
+     }
+    },
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "duplicate_clip",
+   "title": "Duplicate clip",
+   "description": "Copy a clip (with its style, effects and animations), optionally to a new start time.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipId": {
+      "type": "string",
+      "description": "Clip id from get_state"
+     },
+     "start": {
+      "type": "number",
+      "minimum": 0
+     }
+    },
+    "required": [
+     "clipId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "trim_clip",
+   "title": "Trim clip",
+   "description": "Shorten one clip so it starts and/or ends at the given timeline times (seconds). Leaves a gap; use cut_range to remove time from the whole video instead.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipId": {
+      "type": "string",
+      "description": "Clip id from get_state"
+     },
+     "start": {
+      "type": "number",
+      "minimum": 0
+     },
+     "end": {
+      "type": "number",
+      "exclusiveMinimum": 0
+     }
+    },
+    "required": [
+     "clipId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "set_track",
+   "title": "Mute or hide a track",
+   "description": "Mute/unmute or hide/show a whole track (layer).",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "trackId": {
+      "type": "string"
+     },
+     "muted": {
+      "type": "boolean"
+     },
+     "hidden": {
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "trackId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "cut_range",
+   "title": "Cut a time range",
+   "description": "Remove everything between start and end (seconds) on all tracks and close the gap, like a ripple delete. One undo step.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "start": {
+      "type": "number",
+      "minimum": 0
+     },
+     "end": {
+      "type": "number",
+      "exclusiveMinimum": 0
+     }
+    },
+    "required": [
+     "start",
+     "end"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "find_silences",
+   "title": "Find silences",
+   "description": "List the pauses in the timeline audio (start/end seconds) without changing anything.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "minDuration": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 10,
+      "description": "Shortest pause to cut, seconds (default 0.6)"
+     },
+     "thresholdDb": {
+      "type": "number",
+      "minimum": -90,
+      "maximum": -10,
+      "description": "Level counted as silence; default adapts to the recording"
+     },
+     "padding": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Seconds of pause kept around speech (default 0.12)"
+     }
+    },
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "remove_silences",
+   "title": "Remove silences",
+   "description": "Cut all pauses out of the video (jump cuts) in one undoable step. Great for talking-head videos.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "minDuration": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 10,
+      "description": "Shortest pause to cut, seconds (default 0.6)"
+     },
+     "thresholdDb": {
+      "type": "number",
+      "minimum": -90,
+      "maximum": -10,
+      "description": "Level counted as silence; default adapts to the recording"
+     },
+     "padding": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Seconds of pause kept around speech (default 0.12)"
+     }
+    },
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "add_transition",
+   "title": "Add transition",
+   "description": "Transition between two back-to-back clips (fromClipId, and toClipId or the clip that starts where it ends), or between every cut on the main track with all=true. Types: crossfade (dissolve), fade_black (dip to black), slide_left/right/up/down (new shot pushes in), zoom. Clips are overlapped by the duration (using spare footage when available, otherwise later clips move earlier); audio crossfades too. One undo step.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "type": {
+      "type": "string",
+      "enum": [
+       "crossfade",
+       "fade_black",
+       "slide_left",
+       "slide_right",
+       "slide_up",
+       "slide_down",
+       "zoom"
+      ]
+     },
+     "fromClipId": {
+      "type": "string"
+     },
+     "toClipId": {
+      "type": "string"
+     },
+     "all": {
+      "type": "boolean",
+      "description": "Every cut on the main track"
+     },
+     "duration": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 5,
+      "description": "Seconds, default 0.6"
+     }
+    },
+    "required": [
+     "type"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "search_free_media",
+   "title": "Search free media online",
+   "description": "Search openly licensed media to use in the video: music and sound effects (Openverse/Jamendo/Freesound), images (Wikimedia Commons + Openverse/Flickr) and video clips (Wikimedia Commons). Returns direct file URLs with license and attribution; then use download_media (or add_web_image for pictures). Image results come with numbered preview pictures so you can check what each one really shows before using it. Use English keywords. Only licences that allow editing (no ND); by default also commercial use.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "minLength": 1
+     },
+     "type": {
+      "type": "string",
+      "enum": [
+       "music",
+       "sound",
+       "audio",
+       "image",
+       "video"
+      ]
+     },
+     "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 30
+     },
+     "commercialUse": {
+      "type": "boolean",
+      "description": "false to include non-commercial licenses too"
+     },
+     "previews": {
+      "type": "boolean",
+      "description": "Images only; default true: include preview pictures"
+     }
+    },
+    "required": [
+     "query",
+     "type"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "download_media",
+   "title": "Download media from the internet",
+   "description": "Download a video, audio or image file from a direct link into the user's Downloads\\OpenCut folder and import it into the open project (returns the path and the new mediaId for add_to_timeline). Works with direct file links (e.g. from search_free_media, or links the user gives you). Web pages such as YouTube, Instagram or TikTok are not files and can't be downloaded; tell the user so. Only download what the user asked for or approved, and respect licenses.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "url": {
+      "type": "string",
+      "format": "uri"
+     },
+     "fileName": {
+      "type": "string",
+      "description": "Name to save as (extension added automatically)"
+     },
+     "addToProject": {
+      "type": "boolean",
+      "description": "Default true: import into the open project"
+     }
+    },
+    "required": [
+     "url"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "add_web_image",
+   "title": "Show a picture from the internet",
+   "description": "Download a picture from a direct image link (e.g. a search_free_media image url), import it and show it over the video at a given time with an animation — b-roll for something being mentioned. One call does download + import + placement.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "url": {
+      "type": "string",
+      "format": "uri"
+     },
+     "fileName": {
+      "type": "string"
+     },
+     "start": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Timeline seconds when it appears (e.g. when the word is spoken); default the playhead"
+     },
+     "duration": {
+      "type": "number",
+      "minimum": 0.5,
+      "maximum": 30,
+      "description": "Seconds on screen, default 3"
+     },
+     "style": {
+      "type": "string",
+      "enum": [
+       "card",
+       "plain",
+       "fullscreen"
+      ],
+      "description": "\"card\" (default): photo with a white frame and shadow; \"plain\": just the picture with rounded corners; \"fullscreen\": covers the whole frame (cutaway)"
+     },
+     "animation": {
+      "type": "string",
+      "enum": [
+       "pop",
+       "fade",
+       "slide",
+       "zoom",
+       "none"
+      ],
+      "description": "Entrance/exit; default pop (fade for fullscreen)"
+     },
+     "anchor": {
+      "type": "string",
+      "enum": [
+       "center",
+       "top",
+       "bottom",
+       "left",
+       "right",
+       "top-left",
+       "top-right",
+       "bottom-left",
+       "bottom-right"
+      ],
+      "description": "Where on screen (card/plain); default center"
+     },
+     "widthPercent": {
+      "type": "number",
+      "minimum": 5,
+      "maximum": 100,
+      "description": "Card/plain width, % of the frame width (default 70 vertical, 40 horizontal)"
+     },
+     "x": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Centre x, % of frame (overrides anchor)"
+     },
+     "y": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Centre y, % of frame (overrides anchor)"
+     },
+     "tilt": {
+      "type": "number",
+      "minimum": -30,
+      "maximum": 30,
+      "description": "Rotation in degrees, e.g. -4 for a playful card"
+     },
+     "label": {
+      "type": "string",
+      "maxLength": 80,
+      "description": "Short caption under the picture"
+     },
+     "font": {
+      "type": "string",
+      "description": "Google Font for the label, default Montserrat"
+     },
+     "kenBurns": {
+      "type": "boolean",
+      "description": "Slow zoom while on screen, default true"
+     },
+     "sound": {
+      "type": "string",
+      "enum": [
+       "pop",
+       "whoosh",
+       "swoosh_down",
+       "click",
+       "impact",
+       "riser",
+       "ding",
+       "none"
+      ],
+      "description": "Sound effect when it appears (made on the spot, no licence needed); default none"
+     },
+     "behindPerson": {
+      "type": "boolean",
+      "description": "Put it under a cutout_person layer (behind the presenter)"
+     }
+    },
+    "required": [
+     "url"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "place_image",
+   "title": "Show an imported picture",
+   "description": "Show an image already in the project (mediaId from get_state/add_media/download_media) over the video at a given time, as a pop-up photo card, a plain picture or a fullscreen cutaway, animated in and out. It becomes a clip on its own top layer.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "mediaId": {
+      "type": "string"
+     },
+     "start": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Timeline seconds when it appears (e.g. when the word is spoken); default the playhead"
+     },
+     "duration": {
+      "type": "number",
+      "minimum": 0.5,
+      "maximum": 30,
+      "description": "Seconds on screen, default 3"
+     },
+     "style": {
+      "type": "string",
+      "enum": [
+       "card",
+       "plain",
+       "fullscreen"
+      ],
+      "description": "\"card\" (default): photo with a white frame and shadow; \"plain\": just the picture with rounded corners; \"fullscreen\": covers the whole frame (cutaway)"
+     },
+     "animation": {
+      "type": "string",
+      "enum": [
+       "pop",
+       "fade",
+       "slide",
+       "zoom",
+       "none"
+      ],
+      "description": "Entrance/exit; default pop (fade for fullscreen)"
+     },
+     "anchor": {
+      "type": "string",
+      "enum": [
+       "center",
+       "top",
+       "bottom",
+       "left",
+       "right",
+       "top-left",
+       "top-right",
+       "bottom-left",
+       "bottom-right"
+      ],
+      "description": "Where on screen (card/plain); default center"
+     },
+     "widthPercent": {
+      "type": "number",
+      "minimum": 5,
+      "maximum": 100,
+      "description": "Card/plain width, % of the frame width (default 70 vertical, 40 horizontal)"
+     },
+     "x": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Centre x, % of frame (overrides anchor)"
+     },
+     "y": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Centre y, % of frame (overrides anchor)"
+     },
+     "tilt": {
+      "type": "number",
+      "minimum": -30,
+      "maximum": 30,
+      "description": "Rotation in degrees, e.g. -4 for a playful card"
+     },
+     "label": {
+      "type": "string",
+      "maxLength": 80,
+      "description": "Short caption under the picture"
+     },
+     "font": {
+      "type": "string",
+      "description": "Google Font for the label, default Montserrat"
+     },
+     "kenBurns": {
+      "type": "boolean",
+      "description": "Slow zoom while on screen, default true"
+     },
+     "sound": {
+      "type": "string",
+      "enum": [
+       "pop",
+       "whoosh",
+       "swoosh_down",
+       "click",
+       "impact",
+       "riser",
+       "ding",
+       "none"
+      ],
+      "description": "Sound effect when it appears (made on the spot, no licence needed); default none"
+     },
+     "behindPerson": {
+      "type": "boolean",
+      "description": "Put it under a cutout_person layer (behind the presenter)"
+     }
+    },
+    "required": [
+     "mediaId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "preview_motion_graphic",
+   "title": "Preview a motion graphic",
+   "description": "Render a few frames of motion-graphic code and return them as images (transparent areas shown as a checkerboard) without adding anything to the project. Use it to iterate on the design before create_motion_graphic.\n\nWrite JavaScript that defines render(api) (and optionally setup(api)). It is called once per frame with api.t = time in seconds (0 … duration) and api.progress (0 … 1). Compute everything from t (frames may be rendered in any order); no imports, network or DOM.\n\nmode \"2d\" (default): draw on api.ctx, a CanvasRenderingContext2D of api.width × api.height (the video size, e.g. 1080×1920 for 9:16). It starts transparent and cleared every frame, so only what you draw covers the video below.\nmode \"three\": api.THREE (three.js r170), api.scene, api.camera (PerspectiveCamera, fov 35, at z=12 looking at the origin) and api.renderer are ready. Build meshes/lights in setup(api), store them on api.state, move them in render(api); the scene is rendered automatically after render. Transparent background.\n\nHelpers: api.tween(t, t0, t1, from, to, easing) eases a value between two times (clamped); api.ease.{linear,in,out,inOut,back,elastic,bounce}; api.lerp, api.clamp; api.roundRect(ctx, x, y, w, h, radius) then ctx.fill(); api.images.name = ImageBitmaps from the images param; fonts: pass fonts: [\"Montserrat\"] and use ctx.font = \"800 96px Montserrat\".\n\nExample (2d title that pops in and out):\nfunction render({ ctx, t, width, height, tween, ease, duration }) {\n  const s = tween(t, 0, 0.5, 0, 1, ease.back) * tween(t, duration - 0.4, duration, 1, 0);\n  ctx.translate(width / 2, height * 0.2); ctx.scale(s, s);\n  ctx.font = \"900 110px Montserrat\"; ctx.textAlign = \"center\"; ctx.textBaseline = \"middle\";\n  ctx.fillStyle = \"#fff\"; ctx.shadowColor = \"rgba(0,0,0,.5)\"; ctx.shadowBlur = 30;\n  ctx.fillText(\"QUEM EDITA MELHOR?\", 0, 0);\n}\n\nDesign tips: keep safe margins (~6% of the frame), large bold type for mobile, 2-4 colours, ease in/out every motion (0.3-0.6 s), stagger elements, leave the presenter's face clear unless the graphic is fullscreen.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "code": {
+      "type": "string",
+      "minLength": 1,
+      "description": "JavaScript defining render(api) and optionally setup(api); see the tool description"
+     },
+     "mode": {
+      "type": "string",
+      "enum": [
+       "2d",
+       "three"
+      ],
+      "description": "\"2d\" canvas drawing (default) or \"three\" for 3D with three.js"
+     },
+     "duration": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 120,
+      "description": "Seconds, default 5"
+     },
+     "width": {
+      "type": "integer",
+      "minimum": 16,
+      "maximum": 3840,
+      "description": "Default: project width"
+     },
+     "height": {
+      "type": "integer",
+      "minimum": 16,
+      "maximum": 3840,
+      "description": "Default: project height"
+     },
+     "fps": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 60,
+      "description": "Default: project frame rate"
+     },
+     "fonts": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 6,
+      "description": "Google Fonts families to load"
+     },
+     "images": {
+      "type": "object",
+      "additionalProperties": {
+       "type": "string"
+      },
+      "description": "Images for the code as api.images[name]: \"icon:<iconId from search_icons>[~hexcolour]\" or \"media:<mediaId of an imported image>\""
+     },
+     "times": {
+      "type": "array",
+      "items": {
+       "type": "number",
+       "minimum": 0
+      },
+      "maxItems": 8,
+      "description": "Seconds to render; default start, middle, end"
+     }
+    },
+    "required": [
+     "code"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "create_motion_graphic",
+   "title": "Create a motion graphic",
+   "description": "Create an animated graphic from code — titles, lower thirds, \"VS\" cards, logos flying in, animated lists/recipes/infographics, counters, charts, callouts, 3D objects (e.g. a house that opens up), floating screens, end cards — rendered to a transparent video clip and placed on a new top layer at start (default: the playhead). Everything under transparent pixels stays visible.\n\nWrite JavaScript that defines render(api) (and optionally setup(api)). It is called once per frame with api.t = time in seconds (0 … duration) and api.progress (0 … 1). Compute everything from t (frames may be rendered in any order); no imports, network or DOM.\n\nmode \"2d\" (default): draw on api.ctx, a CanvasRenderingContext2D of api.width × api.height (the video size, e.g. 1080×1920 for 9:16). It starts transparent and cleared every frame, so only what you draw covers the video below.\nmode \"three\": api.THREE (three.js r170), api.scene, api.camera (PerspectiveCamera, fov 35, at z=12 looking at the origin) and api.renderer are ready. Build meshes/lights in setup(api), store them on api.state, move them in render(api); the scene is rendered automatically after render. Transparent background.\n\nHelpers: api.tween(t, t0, t1, from, to, easing) eases a value between two times (clamped); api.ease.{linear,in,out,inOut,back,elastic,bounce}; api.lerp, api.clamp; api.roundRect(ctx, x, y, w, h, radius) then ctx.fill(); api.images.name = ImageBitmaps from the images param; fonts: pass fonts: [\"Montserrat\"] and use ctx.font = \"800 96px Montserrat\".\n\nExample (2d title that pops in and out):\nfunction render({ ctx, t, width, height, tween, ease, duration }) {\n  const s = tween(t, 0, 0.5, 0, 1, ease.back) * tween(t, duration - 0.4, duration, 1, 0);\n  ctx.translate(width / 2, height * 0.2); ctx.scale(s, s);\n  ctx.font = \"900 110px Montserrat\"; ctx.textAlign = \"center\"; ctx.textBaseline = \"middle\";\n  ctx.fillStyle = \"#fff\"; ctx.shadowColor = \"rgba(0,0,0,.5)\"; ctx.shadowBlur = 30;\n  ctx.fillText(\"QUEM EDITA MELHOR?\", 0, 0);\n}\n\nDesign tips: keep safe margins (~6% of the frame), large bold type for mobile, 2-4 colours, ease in/out every motion (0.3-0.6 s), stagger elements, leave the presenter's face clear unless the graphic is fullscreen.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "code": {
+      "type": "string",
+      "minLength": 1,
+      "description": "JavaScript defining render(api) and optionally setup(api); see the tool description"
+     },
+     "mode": {
+      "type": "string",
+      "enum": [
+       "2d",
+       "three"
+      ],
+      "description": "\"2d\" canvas drawing (default) or \"three\" for 3D with three.js"
+     },
+     "duration": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 120,
+      "description": "Seconds, default 5"
+     },
+     "width": {
+      "type": "integer",
+      "minimum": 16,
+      "maximum": 3840,
+      "description": "Default: project width"
+     },
+     "height": {
+      "type": "integer",
+      "minimum": 16,
+      "maximum": 3840,
+      "description": "Default: project height"
+     },
+     "fps": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 60,
+      "description": "Default: project frame rate"
+     },
+     "fonts": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 6,
+      "description": "Google Fonts families to load"
+     },
+     "images": {
+      "type": "object",
+      "additionalProperties": {
+       "type": "string"
+      },
+      "description": "Images for the code as api.images[name]: \"icon:<iconId from search_icons>[~hexcolour]\" or \"media:<mediaId of an imported image>\""
+     },
+     "name": {
+      "type": "string",
+      "description": "Clip name"
+     },
+     "start": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Timeline seconds; default the playhead"
+     }
+    },
+    "required": [
+     "code"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "cutout_person",
+   "title": "Cut out the person (AI)",
+   "description": "Separate the person from the background of a video clip with on-device AI (MediaPipe). Creates a copy of the clip that shows only the person (transparent background) on the top layer, exactly aligned with the original (same timing, speed, position, animations, effects). With it you can put graphics BEHIND the presenter: create the graphic (create_motion_graphic, add_icon, add_text, floating screens…) and it lands on a layer under the cutout, so it appears between the background and the person — like logos passing behind them or text behind the head. Do the cut after timing edits (split/trim/speed) of that clip; takes roughly real time. First run downloads the AI model (internet needed).",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipId": {
+      "type": "string",
+      "description": "A video clip showing a person"
+     },
+     "quality": {
+      "type": "string",
+      "enum": [
+       "auto",
+       "fast",
+       "best",
+       "pro"
+      ],
+      "description": "auto (default): professional hair-level matting (MODNet) when the PC has a GPU, the fast model otherwise; \"pro\": always MODNet (slow without a GPU, ~1-3 s per frame); \"fast\": quickest, rough edges"
+     }
+    },
+    "required": [
+     "clipId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "move_layer",
+   "title": "Reorder layers",
+   "description": "Bring a layer (overlay track) to the front or send it back: to = top, bottom, up, down, above:<trackId> or below:<trackId>. The main video track always stays at the bottom.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "trackId": {
+      "type": "string"
+     },
+     "to": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "trackId",
+     "to"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "follow_hand",
+   "title": "Make a clip follow a hand",
+   "description": "Track the presenter's hand in a video clip (on-device AI) and animate another clip (icon, logo, 3D object graphic, text) so it floats at the hand — e.g. a logo sitting in the open palm and moving with it. Keys the clip's position over the time both clips overlap.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipId": {
+      "type": "string",
+      "description": "The clip to move (icon, graphic, text…)"
+     },
+     "videoClipId": {
+      "type": "string",
+      "description": "The video clip where the hand is"
+     },
+     "hand": {
+      "type": "string",
+      "enum": [
+       "left",
+       "right",
+       "any"
+      ],
+      "description": "Hand on the left or right side of the frame"
+     },
+     "point": {
+      "type": "string",
+      "enum": [
+       "palm",
+       "wrist",
+       "index_tip",
+       "thumb_tip"
+      ]
+     },
+     "offsetX": {
+      "type": "number",
+      "description": "Shift, % of frame width"
+     },
+     "offsetY": {
+      "type": "number",
+      "description": "Shift, % of frame height (default -8: just above the palm)"
+     },
+     "sampleEvery": {
+      "type": "number",
+      "minimum": 0.04,
+      "maximum": 1,
+      "description": "Seconds between tracked points (default 0.1)"
+     }
+    },
+    "required": [
+     "clipId",
+     "videoClipId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "search_animations",
+   "title": "Search designer animations (Lottie)",
+   "description": "Search LottieFiles' free catalogue of animations made by designers — animated icons and emojis, arrows, confetti, checkmarks, likes/subscribe buttons, loaders, lower thirds, transitions, stickers. Returns numbered preview pictures (first frame) so you can pick; then add_animation with its url. Use English keywords. These look far more polished than drawing the same thing with code.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "minLength": 1
+     },
+     "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20,
+      "description": "Default 8"
+     },
+     "previews": {
+      "type": "boolean",
+      "description": "Default true"
+     }
+    },
+    "required": [
+     "query"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "add_animation",
+   "title": "Add a designer animation (Lottie)",
+   "description": "Play a Lottie animation (url from search_animations) over the video at a time and place, rendered to a transparent clip on its own top layer. One play-through by default; loop or set duration/speed. Its author and licence go into the credits file automatically.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "url": {
+      "type": "string",
+      "format": "uri"
+     },
+     "start": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Timeline seconds; default the playhead"
+     },
+     "duration": {
+      "type": "number",
+      "minimum": 0.3,
+      "maximum": 60,
+      "description": "Default one play-through"
+     },
+     "loop": {
+      "type": "boolean"
+     },
+     "speed": {
+      "type": "number",
+      "minimum": 0.25,
+      "maximum": 4
+     },
+     "anchor": {
+      "type": "string",
+      "enum": [
+       "center",
+       "top",
+       "bottom",
+       "left",
+       "right",
+       "top-left",
+       "top-right",
+       "bottom-left",
+       "bottom-right"
+      ]
+     },
+     "widthPercent": {
+      "type": "number",
+      "minimum": 3,
+      "maximum": 100,
+      "description": "Default 40"
+     },
+     "x": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Centre x, % of frame"
+     },
+     "y": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Centre y, % of frame"
+     },
+     "fullscreen": {
+      "type": "boolean",
+      "description": "Cover the whole frame, cropping the edges — only for animations made full-frame (transitions, backgrounds). For confetti, emojis, icons use widthPercent (100 = full width, nothing cropped)"
+     },
+     "fade": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 2,
+      "description": "Fade in/out seconds (default 0)"
+     },
+     "behindPerson": {
+      "type": "boolean",
+      "description": "Under a cutout_person layer"
+     },
+     "sound": {
+      "type": "string",
+      "enum": [
+       "pop",
+       "whoosh",
+       "swoosh_down",
+       "click",
+       "impact",
+       "riser",
+       "ding",
+       "none"
+      ]
+     },
+     "name": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "url"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "explode_layers",
+   "title": "3D glass layers shot",
+   "description": "The signature shot: the talking-head frame turns sideways in 3D and splits into glass panes spread in depth — the presenter in front, optional graphics/logos in the middle, the background (person painted out) at the back — each with a numbered label (01 Apresentador, 02 …, 03 Fundo), then folds back into the flat frame, so it cuts in and out seamlessly. Renders a new clip right above the video clip for [start, start+duration] (the person is separated with on-device AI), with whoosh sounds on open/close. Layers above (captions) stay flat on top. Best at a moment where the script talks about layers, parts or how something is made.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipId": {
+      "type": "string",
+      "description": "The talking-head video clip"
+     },
+     "start": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Timeline seconds (default: the clip start)"
+     },
+     "duration": {
+      "type": "number",
+      "minimum": 2.5,
+      "maximum": 20,
+      "description": "Seconds, default 5"
+     },
+     "labels": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "maxLength": 28
+      },
+      "maxItems": 3,
+      "description": "Pane labels front to back, e.g. [\"Apresentador\",\"Logos 3D\",\"Fundo\"] (default Portuguese)"
+     },
+     "sublabels": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "maxLength": 36
+      },
+      "maxItems": 3,
+      "description": "Small grey text under each label"
+     },
+     "middleImages": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 4,
+      "description": "Pictures for the middle pane: \"icon:<iconId>\" (search_icons; prefer colour logos such as logos:*, or add ~ffffff for a white icon — the glass is dark) or \"media:<mediaId>\" of an imported image; omit for two panes only"
+     },
+     "accent": {
+      "type": "string",
+      "description": "Label number colour, hex (default #ff5a36)"
+     },
+     "angle": {
+      "type": "number",
+      "minimum": 10,
+      "maximum": 60,
+      "description": "Turn angle in degrees (default 32)"
+     },
+     "font": {
+      "type": "string",
+      "description": "Google Font for labels (default Montserrat)"
+     },
+     "sound": {
+      "type": "boolean",
+      "description": "Whoosh on open/close (default true)"
+     },
+     "quality": {
+      "type": "string",
+      "enum": [
+       "auto",
+       "fast",
+       "best",
+       "pro"
+      ],
+      "description": "Person separation (default auto: hair-level MODNet with a GPU, fast otherwise; \"pro\" forces MODNet)"
+     }
+    },
+    "required": [
+     "clipId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "punch_zoom",
+   "title": "Punch-in zooms on the face",
+   "description": "Editor-style zooms on a talking-head clip that keep the face framed (on-device face detection): style \"cut\" jumps in on an emphasis word and back out after hold seconds, \"smooth\" eases in/out, \"push\" slowly pushes in over the hold. Give all zooms for the clip in one call (it replaces earlier zooms on that clip); a person cutout of the clip gets the same zooms.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipId": {
+      "type": "string"
+     },
+     "zooms": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "at": {
+         "type": "number",
+         "description": "Timeline seconds"
+        },
+        "scale": {
+         "type": "number",
+         "minimum": 1.02,
+         "maximum": 2.5
+        },
+        "hold": {
+         "type": "number",
+         "minimum": 0.3,
+         "maximum": 30,
+         "description": "Seconds before going back to wide (or until the next zoom)"
+        },
+        "style": {
+         "type": "string",
+         "enum": [
+          "cut",
+          "smooth",
+          "push"
+         ]
+        }
+       },
+       "required": [
+        "at"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "times": {
+      "type": "array",
+      "items": {
+       "type": "number"
+      },
+      "description": "Shortcut: zoom times with the shared settings below"
+     },
+     "scale": {
+      "type": "number",
+      "minimum": 1.02,
+      "maximum": 2.5,
+      "description": "Default 1.18"
+     },
+     "hold": {
+      "type": "number",
+      "minimum": 0.3,
+      "maximum": 30,
+      "description": "Default 2 s"
+     },
+     "style": {
+      "type": "string",
+      "enum": [
+       "cut",
+       "smooth",
+       "push"
+      ],
+      "description": "Default cut"
+     }
+    },
+    "required": [
+     "clipId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "add_sound_effect",
+   "title": "Add a sound effect",
+   "description": "Put a sound effect on the audio layer, timed so it lands at 'at' (made on the spot, no download or licence): pop (small pop-ups), whoosh (movement, transitions), swoosh_down (things leaving), click (UI, list items), impact (big title, reveal), riser (builds up and ends at 'at'), ding (check, price, success).",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "effect": {
+      "type": "string",
+      "enum": [
+       "pop",
+       "whoosh",
+       "swoosh_down",
+       "click",
+       "impact",
+       "riser",
+       "ding"
+      ]
+     },
+     "at": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Timeline seconds of the visual moment; default the playhead"
+     },
+     "volumeDb": {
+      "type": "number",
+      "minimum": -40,
+      "maximum": 6,
+      "description": "Default 0; around -8 sits well under a voice"
+     }
+    },
+    "required": [
+     "effect"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "duck_music",
+   "title": "Duck music under the voice",
+   "description": "Make a music clip dip automatically while someone talks and come back up in the pauses (keys its volume from the other audio). Run it after the cuts are final.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipId": {
+      "type": "string",
+      "description": "The music clip"
+     },
+     "musicDb": {
+      "type": "number",
+      "minimum": -40,
+      "maximum": 6,
+      "description": "Level in pauses (default -12)"
+     },
+     "underVoiceDb": {
+      "type": "number",
+      "minimum": -60,
+      "maximum": 0,
+      "description": "Level under speech (default -24)"
+     }
+    },
+    "required": [
+     "clipId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "check_task",
+   "title": "Wait for a running task",
+   "description": "Wait for a slow operation (export, transcription, captions, silence removal, download, motion graphic, cutout, 3D layers, frames) that answered \"still working\" with a taskId, and get its result.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "taskId": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "taskId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  }
+ ],
+ "transforms": {
+  "view_frames": "frames",
+  "preview_motion_graphic": "frames",
+  "search_free_media": "previews",
+  "search_animations": "previews"
+ }
+}

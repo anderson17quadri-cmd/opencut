@@ -9,7 +9,9 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::Duration;
 
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_updater::UpdaterExt;
 
 // Fixed local port — this is a single-instance local app, no need to pick a
 // free port dynamically. Chosen away from common dev-server defaults
@@ -25,6 +27,8 @@ const NODE_BIN: &str = "node";
 
 fn main() {
 	tauri::Builder::default()
+		.plugin(tauri_plugin_updater::Builder::new().build())
+		.plugin(tauri_plugin_dialog::init())
 		.manage(ServerProcess(Mutex::new(None)))
 		.setup(|app| {
 			// Tauri hands back verbatim paths on Windows (\\?\C:\...). Node
@@ -111,6 +115,15 @@ fn main() {
 				.min_inner_size(960.0, 600.0)
 				.build()?;
 
+			// Look for a newer signed release in the background; the editor is
+			// usable meanwhile and nothing happens without the user's OK.
+			let handle = app.handle().clone();
+			tauri::async_runtime::spawn(async move {
+				if let Err(err) = offer_update(handle.clone()).await {
+					let _ = fs::write(log_dir.join("updater.log"), format!("{err}"));
+				}
+			});
+
 			Ok(())
 		})
 		.on_window_event(|window, event| {
@@ -126,6 +139,50 @@ fn main() {
 		})
 		.run(tauri::generate_context!())
 		.expect("error while running the OpenCut desktop shell");
+}
+
+/// Checks GitHub for a newer signed release and, if the user agrees,
+/// installs it and restarts. Builds without an update key configured
+/// simply find nothing.
+async fn offer_update(app: AppHandle) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+	let Some(update) = app.updater()?.check().await? else {
+		return Ok(());
+	};
+	let version = update.version.clone();
+	let (answer_tx, answer_rx) = tokio_oneshot();
+	app.dialog()
+		.message(format!(
+			"Uma nova versão do OpenCut está disponível ({version}).\n\nVocê está na {}. Quer atualizar agora? O OpenCut vai fechar, instalar e abrir de novo — leva menos de um minuto.",
+			env!("CARGO_PKG_VERSION"),
+		))
+		.title("Atualização do OpenCut")
+		.kind(MessageDialogKind::Info)
+		.buttons(MessageDialogButtons::OkCancelCustom("Atualizar agora".into(), "Depois".into()))
+		.show(move |accepted| {
+			let _ = answer_tx.send(accepted);
+		});
+	if !answer_rx.await.unwrap_or(false) {
+		return Ok(());
+	}
+
+	let bytes = update.download(|_, _| {}, || {}).await?;
+	// The installer replaces the bundled Node runtime: stop the local
+	// server first so no file is locked.
+	if let Some(mut child) = app.state::<ServerProcess>().0.lock().unwrap().take() {
+		let _ = child.kill();
+		let _ = child.wait();
+	}
+	update.install(bytes)?;
+	app.restart();
+}
+
+fn tokio_oneshot() -> (
+	std::sync::mpsc::Sender<bool>,
+	impl std::future::Future<Output = Result<bool, std::sync::mpsc::RecvError>>,
+) {
+	let (tx, rx) = std::sync::mpsc::channel::<bool>();
+	let wait = async move { tauri::async_runtime::spawn_blocking(move || rx.recv()).await.unwrap_or(Err(std::sync::mpsc::RecvError)) };
+	(tx, wait)
 }
 
 /// Writes `message` to logs\fatal.log, shows it in a native message box, and

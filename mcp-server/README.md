@@ -14,6 +14,16 @@ normal undo history.
 
 OpenCut has to be open while Claude works.
 
+## Updates
+
+The extension reads its tool list from the running app
+(`/agent-tools.json`, generated from `src/index.ts` by `npm run
+export-tools` and shipped inside the app), falling back to the list bundled
+at build time. Tools added in an app update therefore reach Claude without
+reinstalling `opencut.mcpb`; if Claude starts before the app, it is told the
+list changed once the app is up. The app itself updates from signed GitHub
+releases (Tauri updater).
+
 ## How it works
 
 The extension is a small stdio MCP server. Each tool is a POST to

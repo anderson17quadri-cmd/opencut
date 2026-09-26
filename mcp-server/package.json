@@ -8,7 +8,8 @@
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node18 --outfile=extension/server/index.js",
     "typecheck": "tsc --noEmit",
-    "pack": "npm run build && mcpb validate extension/manifest.json && mcpb pack extension opencut.mcpb"
+    "pack": "npm run export-tools && mcpb validate extension/manifest.json && mcpb pack extension opencut.mcpb",
+    "export-tools": "npm run build && node extension/server/index.js --export-tools src/generated/tools.json,../opencut-classic/apps/web/public/agent-tools.json && npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.1",

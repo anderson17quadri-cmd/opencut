@@ -253,8 +253,10 @@ function previewsToImages(result: ToolResult): ToolResult {
 	};
 }
 
+const VERSION = "0.8.0";
+
 const server = new McpServer(
-	{ name: "opencut", version: "0.8.0" },
+	{ name: "opencut", version: VERSION },
 	{ instructions: INSTRUCTIONS },
 );
 
@@ -1145,4 +1147,115 @@ server.registerTool(
 	({ taskId }) => checkTask(taskId),
 );
 
-await server.connect(new StdioServerTransport());
+// ------------------------------------------------------------ serving
+//
+// The tool list above is also exported to JSON at build time and shipped
+// inside the OpenCut app (served at /agent-tools.json). At run time the
+// extension prefers the app's list, so tools added in an app update reach
+// Claude without reinstalling this extension. Every tool is a plain call
+// to the app; a few results are post-processed (pictures), named here.
+
+type ToolsFile = {
+	version: string;
+	instructions: string;
+	tools: Array<{ name: string } & Record<string, unknown>>;
+	transforms: Record<string, "frames" | "previews">;
+};
+
+const TRANSFORMS = { frames: framesToImages, previews: previewsToImages } as const;
+const TRANSFORM_BY_TOOL: ToolsFile["transforms"] = {
+	view_frames: "frames",
+	preview_motion_graphic: "frames",
+	search_free_media: "previews",
+	search_animations: "previews",
+};
+
+async function exportTools(path: string) {
+	const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+	const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+	const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+	await server.connect(serverSide);
+	const client = new Client({ name: "export", version: "1" });
+	await client.connect(clientSide);
+	const { tools } = await client.listTools();
+	const file: ToolsFile = { version: VERSION, instructions: INSTRUCTIONS, tools, transforms: TRANSFORM_BY_TOOL };
+	const { writeFileSync, mkdirSync } = await import("node:fs");
+	const { dirname } = await import("node:path");
+	for (const target of path.split(",")) {
+		mkdirSync(dirname(target), { recursive: true });
+		writeFileSync(target, `${JSON.stringify(file, null, 1)}\n`);
+	}
+	await client.close();
+}
+
+/** The app's tool list, or null when the app isn't running (or is older). */
+function fetchAppTools(): Promise<ToolsFile | null> {
+	return new Promise((resolve) => {
+		const req = request(`${OPENCUT_URL}/agent-tools.json`, { method: "GET", timeout: 2000 }, (res) => {
+			if (res.statusCode !== 200) {
+				res.resume();
+				return resolve(null);
+			}
+			const chunks: Buffer[] = [];
+			res.on("data", (chunk: Buffer) => chunks.push(chunk));
+			res.on("end", () => {
+				try {
+					const file = JSON.parse(Buffer.concat(chunks).toString("utf8")) as ToolsFile;
+					resolve(Array.isArray(file.tools) && file.tools.length > 0 ? file : null);
+				} catch {
+					resolve(null);
+				}
+			});
+		});
+		req.on("timeout", () => req.destroy());
+		req.on("error", () => resolve(null));
+		req.end();
+	});
+}
+
+async function serve() {
+	const { Server } = await import("@modelcontextprotocol/sdk/server/index.js");
+	const { CallToolRequestSchema, ListToolsRequestSchema } = await import("@modelcontextprotocol/sdk/types.js");
+	const bundled = (await import("./generated/tools.json", { with: { type: "json" } })).default as unknown as ToolsFile;
+	const fromApp = await fetchAppTools();
+	let current: ToolsFile = fromApp ?? (bundled.tools?.length ? bundled : { ...bundled, tools: [] });
+
+	const runtime = new Server(
+		{ name: "opencut", version: current.version || VERSION },
+		{ capabilities: { tools: { listChanged: true } }, instructions: current.instructions || INSTRUCTIONS },
+	);
+	runtime.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: current.tools as never }));
+	runtime.setRequestHandler(CallToolRequestSchema, async (request) => {
+		const name = request.params.name;
+		const args = (request.params.arguments ?? {}) as Record<string, unknown>;
+		if (name === "check_task") return (await checkTask(String(args.taskId ?? ""))) as never;
+		if (!current.tools.some((tool) => tool.name === name)) {
+			return { content: [{ type: "text", text: `Unknown tool ${name}.` }], isError: true } as never;
+		}
+		const kind = current.transforms?.[name] ?? TRANSFORM_BY_TOOL[name];
+		return (await callOpenCut(name, args, kind ? TRANSFORMS[kind] : undefined)) as never;
+	});
+	await runtime.connect(new StdioServerTransport());
+
+	// Started before the app: pick up the app's (possibly newer) list once
+	// it is running, and tell Claude the list changed.
+	if (!fromApp) {
+		const timer = setInterval(async () => {
+			const found = await fetchAppTools();
+			if (!found) return;
+			clearInterval(timer);
+			if (JSON.stringify(found.tools) !== JSON.stringify(current.tools)) {
+				current = found;
+				await runtime.sendToolListChanged().catch(() => {});
+			}
+		}, 15_000);
+		timer.unref();
+	}
+}
+
+if (process.argv[2] === "--export-tools") {
+	await exportTools(process.argv[3] ?? "tools.json");
+	process.exit(0);
+} else {
+	await serve();
+}

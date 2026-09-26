@@ -6,9 +6,16 @@ on:
       - "desktop-v*"
   workflow_dispatch: {}
 
+# Publishing a release (for the in-app updater) needs write access.
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      # Step "if:" can't see secrets directly; expose whether the key is set.
+      HAS_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -56,6 +63,14 @@ jobs:
           ./wasm-pack-v0.13.1-x86_64-pc-windows-msvc/wasm-pack.exe build rust/wasm --target bundler --out-dir pkg
           node apps/desktop-tauri/scripts/use-local-wasm.mjs
 
+      # The app serves Claude's tool list (/agent-tools.json) so the
+      # extension picks up tools added in app updates without a reinstall.
+      - name: Export Claude tool list into the app
+        working-directory: mcp-server
+        run: |
+          npm ci
+          npm run export-tools
+
       - name: Build web app (standalone output)
         working-directory: opencut-classic
         run: bun run build:web
@@ -89,15 +104,26 @@ jobs:
         working-directory: opencut-classic/apps/desktop-tauri
         run: bunx tauri icon ../web/public/icons/apple-icon-180x180.png
 
+      # With the signing key (repository secret TAURI_SIGNING_PRIVATE_KEY)
+      # the build also writes signed updater bundles (.sig) for the in-app
+      # updater. Without it the installer is built exactly as before.
       - name: Build installer
         working-directory: opencut-classic/apps/desktop-tauri
-        run: bunx tauri build
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            bunx tauri build
+          else
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY is not set: building without updater signatures (no auto-update release)."
+            bunx tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          fi
 
       - name: Build Claude Desktop extension
         working-directory: mcp-server
-        run: |
-          npm ci
-          npm run pack
+        run: npm run pack
 
       - name: Locate installers
         id: artifacts
@@ -118,11 +144,38 @@ jobs:
             mcp-server/opencut.mcpb
           if-no-files-found: error
 
-      - name: Attach to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/desktop-v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            ${{ steps.artifacts.outputs.bundle_dir }}/msi/*.msi
-            ${{ steps.artifacts.outputs.bundle_dir }}/nsis/*.exe
-            mcp-server/opencut.mcpb
+      # Publishes release v<version> with the installers, the extension and
+      # latest.json, which the installed app polls to offer the update.
+      # Rebuilding the same version replaces the files of that release.
+      - name: Publish release for the in-app updater
+        if: env.HAS_KEY == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/desktop-v'))
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUNDLE: ${{ steps.artifacts.outputs.bundle_dir }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./opencut-classic/apps/desktop-tauri/src-tauri/tauri.conf.json').version")
+          TAG="v$VERSION"
+          EXE=$(ls "$BUNDLE"/nsis/*-setup.exe | head -1)
+          MSI=$(ls "$BUNDLE"/msi/*.msi | head -1)
+          BASE="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          EXE_URL="$BASE/$(basename "$EXE")" MSI_URL="$BASE/$(basename "$MSI")" \
+          EXE_SIG=$(cat "$EXE.sig") MSI_SIG=$(cat "$MSI.sig") VERSION="$VERSION" \
+          node -e '
+            const e = process.env;
+            const nsis = { signature: e.EXE_SIG, url: e.EXE_URL };
+            const msi = { signature: e.MSI_SIG, url: e.MSI_URL };
+            const latest = {
+              version: e.VERSION,
+              notes: "OpenCut " + e.VERSION,
+              pub_date: new Date().toISOString(),
+              platforms: { "windows-x86_64": nsis, "windows-x86_64-nsis": nsis, "windows-x86_64-msi": msi },
+            };
+            require("fs").writeFileSync("latest.json", JSON.stringify(latest, null, 2));
+          '
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "OpenCut $VERSION" --latest \
+              --notes "Instale o OpenCut pelo instalador (.exe) e a extensão do Claude (opencut.mcpb). Depois disso o app se atualiza sozinho."
+          fi
+          gh release upload "$TAG" "$EXE" "$EXE.sig" "$MSI" "$MSI.sig" mcp-server/opencut.mcpb latest.json --clobber
