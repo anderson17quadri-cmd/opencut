@@ -23,6 +23,8 @@ Basics:
 Editing:
 - Remove a section of the whole video with cut_range (later clips move left, no gap). For one clip only, split_clip + delete_clips, or trim_clip.
 - remove_silences cuts pauses from talking videos (find_silences previews them). transcribe gives what is said with timestamps, useful to cut by content or to write chapters, titles and descriptions.
+- Social-media captions where the spoken word lights up: generate_captions with style "karaoke".
+- Objects in the presenter's hand (logos floating in the palm, following it): create the object (add_icon / create_motion_graphic small, e.g. widthPercent 18), then follow_hand with the talking-head clip; combine with cutout_person to let it pass behind them.
 - Captions: generate_captions transcribes the audio and adds styled captions on their own track (the first run downloads a speech model, which can take a few minutes). add_captions adds captions you write yourself (e.g. translations). Restyle them all later with set_clip_properties using the captions trackId. fontSize ≈ percent of video height × 0.9 (5 = normal captions, 8 = big social-media captions).
 - Layout: set_clip_properties places any visual clip with anchor (top-left … bottom-right, center) plus margin, or x/y (centre, % of the frame), and sizes it with widthPercent/heightPercent. It also styles text (font, size, colour, bold, background box), opacity, rotation, blend mode.
 - Titles: add_text, then set_clip_properties to style and place it, then animate for motion.
@@ -199,7 +201,7 @@ async function callViewFrames(args: Record<string, unknown>, tool = "view_frames
 }
 
 const server = new McpServer(
-	{ name: "opencut", version: "0.4.0" },
+	{ name: "opencut", version: "0.5.0" },
 	{ instructions: INSTRUCTIONS },
 );
 
@@ -524,8 +526,8 @@ server.registerTool(
 	{
 		title: "Transcribe speech",
 		description:
-			"Transcribe the timeline's audio on this computer and return what is said with start/end times (seconds). Nothing is changed. The first run downloads a speech model and can take a few minutes.",
-		inputSchema: { language: languageSchema },
+			"Transcribe the timeline's audio on this computer and return what is said with start/end times (seconds). words=true returns every word with its own timing (for precise cuts or custom animated text). Nothing is changed. The first run downloads a speech model and can take a few minutes.",
+		inputSchema: { language: languageSchema, words: z.boolean().optional() },
 	},
 	(args) => callOpenCut("transcribe", args),
 );
@@ -535,9 +537,11 @@ server.registerTool(
 	{
 		title: "Generate captions",
 		description:
-			"Transcribe the timeline's audio and add captions as text clips on a new track, styled as requested. Returns the trackId and each caption (id, time, text) so you can fix words with set_clip_properties.",
+			"Transcribe the timeline's audio and add captions. style \"classic\" (default): text clips on a new track, editable word by word with set_clip_properties (returns each caption's id). style \"karaoke\": social-media captions where the word being spoken lights up (highlightColor) and pops, short phrases, bold uppercase with outline — rendered as one animated clip (regenerate to change).",
 		inputSchema: {
 			language: languageSchema,
+			style: z.enum(["classic", "karaoke"]).optional(),
+			highlightColor: hex.optional().describe("karaoke: colour of the spoken word (default yellow)"),
 			wordsPerCaption: z.number().int().min(1).max(20).optional().describe("Words per caption (default 3); 1-3 for fast social captions"),
 			...captionStyle,
 		},
@@ -871,6 +875,25 @@ server.registerTool(
 		inputSchema: { trackId: z.string(), to: z.string() },
 	},
 	(args) => callOpenCut("move_layer", args),
+);
+
+server.registerTool(
+	"follow_hand",
+	{
+		title: "Make a clip follow a hand",
+		description:
+			"Track the presenter's hand in a video clip (on-device AI) and animate another clip (icon, logo, 3D object graphic, text) so it floats at the hand — e.g. a logo sitting in the open palm and moving with it. Keys the clip's position over the time both clips overlap.",
+		inputSchema: {
+			clipId: z.string().describe("The clip to move (icon, graphic, text…)"),
+			videoClipId: z.string().describe("The video clip where the hand is"),
+			hand: z.enum(["left", "right", "any"]).optional().describe("Hand on the left or right side of the frame"),
+			point: z.enum(["palm", "wrist", "index_tip", "thumb_tip"]).optional(),
+			offsetX: z.number().optional().describe("Shift, % of frame width"),
+			offsetY: z.number().optional().describe("Shift, % of frame height (default -8: just above the palm)"),
+			sampleEvery: z.number().min(0.04).max(1).optional().describe("Seconds between tracked points (default 0.1)"),
+		},
+	},
+	(args) => callOpenCut("follow_hand", args),
 );
 
 server.registerTool(

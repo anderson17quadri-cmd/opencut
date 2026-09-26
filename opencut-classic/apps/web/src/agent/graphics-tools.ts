@@ -161,8 +161,21 @@ async function previewMotionGraphic(args: Args) {
 async function createMotionGraphic(args: Args) {
 	const spec = await buildSpec(args);
 	const name = (typeof args.name === "string" && args.name.trim()) || "Motion graphic";
-	const frameCount = Math.max(1, Math.round(spec.duration * spec.fps));
+	const start = Math.max(0, optNum(args, "start") ?? toSeconds(editor().playback.getCurrentTime()));
+	return renderMotionGraphicClip({ spec, name, start });
+}
 
+/** Renders a motion graphic to a transparent clip on a new graphics layer. */
+export async function renderMotionGraphicClip({
+	spec,
+	name,
+	start,
+}: {
+	spec: MotionGraphicSpec;
+	name: string;
+	start: number;
+}) {
+	const frameCount = Math.max(1, Math.round(spec.duration * spec.fps));
 	const progress = progressToast(`Claude está criando "${name}"`);
 	const sandbox = await MotionGraphicSandbox.start(spec).catch((error) => {
 		progress.fail();
@@ -196,7 +209,6 @@ async function createMotionGraphic(args: Args) {
 		.media.getAssets()
 		.find((candidate) => candidate.id === media.mediaId);
 	if (!asset) throw new Error("The rendered graphic could not be imported.");
-	const start = Math.max(0, optNum(args, "start") ?? toSeconds(editor().playback.getCurrentTime()));
 
 	const clip = await asOneStep(() => {
 		// Its own layer on top, but under any person cutout, so a cutout
@@ -231,7 +243,6 @@ async function createMotionGraphic(args: Args) {
 		note: "Check it with view_frames. To change it, delete_clips this clip and create it again with new code.",
 	};
 }
-
 
 async function cutoutPersonTool(args: Args) {
 	requireOpenProject();

@@ -3,6 +3,14 @@ import type {
 	TranscriptionModelId,
 } from "./types";
 
+/** Same as Small, exported with cross-attentions so it can time each word. */
+export const WORD_TIMESTAMP_MODEL: TranscriptionModel = {
+	id: "whisper-small-timestamped",
+	name: "Small (palavras)",
+	huggingFaceId: "onnx-community/whisper-small_timestamped",
+	description: "Tempo de cada palavra (legendas estilo karaokê)",
+};
+
 export const TRANSCRIPTION_MODELS: TranscriptionModel[] = [
 	{
 		id: "whisper-tiny",

@@ -6,7 +6,7 @@ import type {
 } from "@/transcription/types";
 import {
 	DEFAULT_TRANSCRIPTION_MODEL,
-	TRANSCRIPTION_MODELS,
+	TRANSCRIPTION_MODELS, WORD_TIMESTAMP_MODEL,
 } from "@/transcription/models";
 import type { WorkerMessage, WorkerResponse } from "./worker";
 
@@ -21,14 +21,18 @@ class TranscriptionService {
 	async transcribe({
 		audioData,
 		language = "auto",
-		modelId = DEFAULT_TRANSCRIPTION_MODEL,
+		modelId: requestedModelId = DEFAULT_TRANSCRIPTION_MODEL,
+		wordTimestamps = false,
 		onProgress,
 	}: {
 		audioData: Float32Array;
 		language?: TranscriptionLanguage;
 		modelId?: TranscriptionModelId;
+		/** Time each word (uses the timestamped model; segments are then words). */
+		wordTimestamps?: boolean;
 		onProgress?: ProgressCallback;
 	}): Promise<TranscriptionResult> {
+		const modelId = wordTimestamps ? WORD_TIMESTAMP_MODEL.id : requestedModelId;
 		await this.ensureWorker({ modelId, onProgress });
 
 		return new Promise((resolve, reject) => {
@@ -76,6 +80,7 @@ class TranscriptionService {
 				type: "transcribe",
 				audio: audioData,
 				language,
+				wordTimestamps,
 			} satisfies WorkerMessage);
 		});
 	}
@@ -106,7 +111,7 @@ class TranscriptionService {
 		this.isInitializing = true;
 		this.isInitialized = false;
 
-		const model = TRANSCRIPTION_MODELS.find((m) => m.id === modelId);
+		const model = [...TRANSCRIPTION_MODELS, WORD_TIMESTAMP_MODEL].find((m) => m.id === modelId);
 		if (!model) {
 			throw new Error(`Unknown model: ${modelId}`);
 		}

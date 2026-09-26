@@ -39,7 +39,7 @@ import { DEFAULT_TRANSCRIPTION_SAMPLE_RATE } from "@/transcription/audio";
 import { buildCaptionChunks } from "@/transcription/caption";
 import { LANGUAGES } from "@/transcription/languages";
 import type { TranscriptionSegment } from "@/transcription/types";
-import type { MediaTime } from "@/wasm";
+import { type MediaTime, mediaTimeToSeconds } from "@/wasm";
 import {
 	type Args,
 	allTracks,
@@ -54,7 +54,9 @@ import {
 	str,
 	toSeconds,
 } from "./helpers";
-import { runGraphicsTool } from "./graphics-tools";
+import { renderMotionGraphicClip, runGraphicsTool } from "./graphics-tools";
+import { type KaraokeStyle, groupWords, karaokeCode } from "./karaoke";
+import { createHandLandmarker, videoFrames } from "./vision";
 import {
 	ANCHORS,
 	type Anchor,
@@ -652,7 +654,10 @@ function languageArg(args: Args) {
 	return known.code;
 }
 
-async function transcribeTimeline(args: Args): Promise<TranscriptionSegment[]> {
+async function transcribeTimeline(
+	args: Args,
+	{ words = false }: { words?: boolean } = {},
+): Promise<TranscriptionSegment[]> {
 	requireOpenProject();
 	const e = editor();
 	const duration = e.timeline.getTotalDuration();
@@ -669,6 +674,7 @@ async function transcribeTimeline(args: Args): Promise<TranscriptionSegment[]> {
 	const result = await transcriptionService.transcribe({
 		audioData: samples,
 		language: languageArg(args),
+		wordTimestamps: words,
 	});
 	return result.segments;
 }
@@ -676,14 +682,12 @@ async function transcribeTimeline(args: Args): Promise<TranscriptionSegment[]> {
 const round2 = (value: number) => Math.round(value * 100) / 100;
 
 async function transcribe(args: Args) {
-	const segments = await transcribeTimeline(args);
-	return {
-		segments: segments.map((s) => ({
-			start: round2(s.start),
-			end: round2(s.end),
-			text: s.text.trim(),
-		})),
-	};
+	const words = args.words === true;
+	const segments = await transcribeTimeline(args, { words });
+	const items = segments
+		.map((s) => ({ start: round2(s.start), end: round2(s.end), text: s.text.trim() }))
+		.filter((s) => s.text);
+	return words ? { words: items } : { segments: items };
 }
 
 function captionStyle(args: Args): SubtitleStyleOverrides {
@@ -738,6 +742,7 @@ async function insertCaptions(args: Args, cues: SubtitleCue[]) {
 }
 
 async function generateCaptions(args: Args) {
+	if (args.style === "karaoke") return generateKaraokeCaptions(args);
 	const segments = await transcribeTimeline(args);
 	const wordsPerCaption = optNum(args, "wordsPerCaption");
 	const chunks = buildCaptionChunks({
@@ -745,6 +750,65 @@ async function generateCaptions(args: Args) {
 		...(wordsPerCaption !== undefined ? { wordsPerChunk: Math.max(1, Math.round(wordsPerCaption)) } : {}),
 	});
 	return insertCaptions(args, chunks);
+}
+
+/**
+ * Word-by-word animated captions: transcribe with word timing, then render
+ * the phrases as one transparent motion-graphic clip where the spoken
+ * word lights up.
+ */
+async function generateKaraokeCaptions(args: Args) {
+	const project = requireOpenProject();
+	const words = (await transcribeTimeline(args, { words: true }))
+		.map((w) => ({ text: w.text.trim(), start: w.start, end: Math.max(w.end, w.start + 0.05) }))
+		.filter((w) => w.text);
+	if (words.length === 0) throw new Error("No speech was found to caption.");
+
+	const { width, height } = project.settings.canvasSize;
+	const groups = groupWords({
+		words,
+		wordsPerCaption: Math.max(1, Math.round(optNum(args, "wordsPerCaption") ?? 3)),
+	});
+	const position = opt(args, "position", isString) ?? "bottom";
+	const background = opt(args, "background", isString);
+	const fontFamily = opt(args, "fontFamily", isString) ?? "Montserrat";
+	const start = Math.max(0, groups[0].start - 0.05);
+	const end = groups[groups.length - 1].end;
+	const style: KaraokeStyle = {
+		fontFamily,
+		fontWeight: opt(args, "bold", isBool) === false ? 600 : 900,
+		fontSize: ((optNum(args, "fontSize") ?? 6) * height) / 90,
+		color: hexColor(opt(args, "color", isString) ?? "#ffffff"),
+		highlightColor: hexColor(opt(args, "highlightColor", isString) ?? "#ffd400"),
+		upcomingOpacity: 0.55,
+		boxColor: background && background !== "none" ? hexColor(background) : null,
+		y: position === "top" ? 0.2 : position === "middle" ? 0.5 : 0.78,
+		uppercase: opt(args, "uppercase", isBool) ?? true,
+		maxWidth: 0.86,
+	};
+	const clip = await renderMotionGraphicClip({
+		spec: {
+			code: karaokeCode({ groups, style, offset: start }),
+			mode: "2d",
+			width,
+			height,
+			fps: Math.min(Math.round(frameRateToFloat(project.settings.fps)), 30),
+			duration: Math.max(0.1, end - start),
+			fonts: [fontFamily],
+		},
+		name: "Legendas karaokê",
+		start,
+	});
+	return {
+		...clip,
+		style: "karaoke",
+		captions: groups.map((g) => ({
+			start: round2(g.start),
+			end: round2(g.end),
+			text: g.words.map((w) => w.text).join(" "),
+		})),
+		note: "The captions are one rendered clip. To fix a word, delete it and use add_captions or regenerate.",
+	};
 }
 
 async function addCaptions(args: Args) {
@@ -1644,6 +1708,110 @@ async function moveLayer(args: Args) {
 	};
 }
 
+
+// ------------------------------------------------------------ hand tracking
+
+const HAND_POINTS: Record<string, number> = { palm: 9, wrist: 0, index_tip: 8, thumb_tip: 4 };
+
+async function followHand(args: Args) {
+	requireOpenProject();
+	const target = findElement(str(args, "clipId"));
+	const source = findElement(str(args, "videoClipId"));
+	if (source.element.type !== "video") throw new Error("videoClipId must be a video clip.");
+	if (!VISUAL_TYPES.has(target.element.type)) throw new Error("clipId must be a visual clip.");
+	const asset = editor()
+		.media.getAssets()
+		.find((candidate) => "mediaId" in source.element && candidate.id === source.element.mediaId);
+	if (!asset) throw new Error("The video clip's media is missing.");
+
+	const side = opt(args, "hand", isString) ?? "any";
+	const point = HAND_POINTS[opt(args, "point", isString) ?? "palm"] ?? 9;
+	const offsetX = optNum(args, "offsetX") ?? 0;
+	const offsetY = optNum(args, "offsetY") ?? -8;
+	const every = Math.min(Math.max(optNum(args, "sampleEvery") ?? 0.1, 0.04), 1);
+
+	// The part of the timeline where both clips are showing.
+	const from = Math.max(toSeconds(target.element.startTime), toSeconds(source.element.startTime));
+	const to = Math.min(
+		toSeconds(elementEnd(target.element) as MediaTime),
+		toSeconds(elementEnd(source.element) as MediaTime),
+	);
+	if (to - from < every) throw new Error("The two clips don't overlap in time.");
+	const rate = source.element.retime?.rate ?? 1;
+	const trimStart = mediaTimeToSeconds({ time: source.element.trimStart });
+	const sourceStart = trimStart + (from - toSeconds(source.element.startTime)) * rate;
+	const sourceEnd = trimStart + (to - toSeconds(source.element.startTime)) * rate;
+
+	const bounds = baseBounds(source.element);
+	if (!bounds) throw new Error("The video clip isn't visible.");
+	const { width, height } = getCanvasSize();
+	const landmarker = await createHandLandmarker();
+	const samples: Array<{ time: number; x: number; y: number }> = [];
+	let nextSample = sourceStart;
+	let lastMs = -1;
+	try {
+		for await (const frame of videoFrames({ file: asset.file, start: sourceStart, end: sourceEnd, maxWidth: 480 })) {
+			if (frame.timestamp + 1e-6 < nextSample) continue;
+			nextSample = frame.timestamp + every * rate;
+			const ms = Math.max(lastMs + 1, Math.round(frame.timestamp * 1000));
+			lastMs = ms;
+			const result = landmarker.detectForVideo(frame.canvas as TexImageSource, ms);
+			// Map each hand into the frame and ignore ones cropped out of view
+			// (zoomed footage, split screens).
+			const hands = result.landmarks
+				.map((landmarks) => landmarks[point])
+				.filter(Boolean)
+				.map((landmark) => ({
+					x: ((bounds.cx + (landmark.x - 0.5) * bounds.width) / width) * 100,
+					y: ((bounds.cy + (landmark.y - 0.5) * bounds.height) / height) * 100,
+				}))
+				.filter((hand) => hand.x > -2 && hand.x < 102 && hand.y > -2 && hand.y < 102)
+				.sort((a, b) => a.x - b.x);
+			const hand = side === "right" ? hands[hands.length - 1] : hands[0];
+			if (!hand) continue;
+			const timelineTime = toSeconds(source.element.startTime) + (frame.timestamp - trimStart) / rate;
+			samples.push({ time: timelineTime, x: hand.x + offsetX, y: hand.y + offsetY });
+		}
+	} finally {
+		landmarker.close();
+	}
+	if (samples.length < 2) throw new Error("No visible hand was found in that part of the video.");
+
+	// Light smoothing so the object doesn't jitter with the landmarks.
+	const smooth = samples.map((sample, i) => {
+		const window = samples.slice(Math.max(0, i - 1), i + 2);
+		return {
+			time: sample.time,
+			x: window.reduce((sum, s) => sum + s.x, 0) / window.length,
+			y: window.reduce((sum, s) => sum + s.y, 0) / window.length,
+		};
+	});
+
+	const targetStart = toSeconds(target.element.startTime);
+	const keyframes = smooth.flatMap((s) => [
+		{ property: "x", time: s.time - targetStart, value: Math.round(s.x * 100) / 100 },
+		{ property: "y", time: s.time - targetStart, value: Math.round(s.y * 100) / 100 },
+	]);
+	// Replace any earlier position animation, then key the new path.
+	await removeAnimations({ clipId: target.element.id, property: "position" });
+	const animated = await animate({ clipId: target.element.id, keyframes, easing: "linear" });
+	const visible = smooth.filter((p) => p.x >= 0 && p.x <= 100 && p.y >= 0 && p.y <= 100).length;
+	return {
+		trackedFrames: samples.length,
+		from: round2(from),
+		to: round2(to),
+		// A few points of the path (centre in % of the frame) to sanity-check.
+		path: smooth
+			.filter((_, i) => i % Math.max(1, Math.round(0.5 / every)) === 0)
+			.map((p) => ({ time: round2(p.time), x: Math.round(p.x), y: Math.round(p.y) })),
+		...(visible < smooth.length / 2
+			? { warning: "Most tracked points are outside the visible frame — the hand found may be one that is cropped out. Try the other hand or check with view_frames." }
+			: {}),
+		clip: animated,
+		note: "Undo twice to remove (animation + cleanup).",
+	};
+}
+
 // ---------------------------------------------------------------- dispatch
 
 export async function runProTool({
@@ -1704,6 +1872,8 @@ export async function runProTool({
 			return addTransition(args);
 		case "move_layer":
 			return moveLayer(args);
+		case "follow_hand":
+			return followHand(args);
 		default:
 			return runGraphicsTool({ tool, args });
 	}

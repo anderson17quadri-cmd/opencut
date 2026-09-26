@@ -11,7 +11,12 @@ import {
 
 export type WorkerMessage =
 	| { type: "init"; modelId: string }
-	| { type: "transcribe"; audio: Float32Array; language: string }
+	| {
+			type: "transcribe";
+			audio: Float32Array;
+			language: string;
+			wordTimestamps?: boolean;
+	  }
 	| { type: "cancel" };
 
 export type WorkerResponse =
@@ -43,6 +48,7 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
 			await handleTranscribe({
 				audio: message.audio,
 				language: message.language,
+				wordTimestamps: message.wordTimestamps ?? false,
 			});
 			break;
 		case "cancel":
@@ -119,9 +125,11 @@ async function handleInit({ modelId }: { modelId: string }) {
 async function handleTranscribe({
 	audio,
 	language,
+	wordTimestamps,
 }: {
 	audio: Float32Array;
 	language: string;
+	wordTimestamps: boolean;
 }) {
 	if (!transcriber) {
 		self.postMessage({
@@ -138,7 +146,7 @@ async function handleTranscribe({
 			chunk_length_s: DEFAULT_CHUNK_LENGTH_SECONDS,
 			stride_length_s: DEFAULT_STRIDE_SECONDS,
 			language: language === "auto" ? undefined : language,
-			return_timestamps: true,
+			return_timestamps: wordTimestamps ? "word" : true,
 		});
 
 		if (cancelled) return;

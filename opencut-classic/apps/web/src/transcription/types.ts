@@ -28,6 +28,7 @@ export interface TranscriptionProgress {
 }
 
 export type TranscriptionModelId =
+	| "whisper-small-timestamped"
 	| "whisper-tiny"
 	| "whisper-small"
 	| "whisper-medium"
