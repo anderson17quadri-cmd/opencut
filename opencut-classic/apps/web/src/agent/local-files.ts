@@ -7,6 +7,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 	".m4v": "video/mp4",
 	".mov": "video/quicktime",
 	".webm": "video/webm",
+	".ogv": "video/ogg",
 	".mkv": "video/x-matroska",
 	".avi": "video/x-msvideo",
 	".mp3": "audio/mpeg",
@@ -14,6 +15,8 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 	".m4a": "audio/mp4",
 	".aac": "audio/aac",
 	".ogg": "audio/ogg",
+	".oga": "audio/ogg",
+	".opus": "audio/ogg",
 	".flac": "audio/flac",
 	".png": "image/png",
 	".jpg": "image/jpeg",
@@ -79,12 +82,31 @@ export async function nextExportPath({
 	name: string;
 	extension: string;
 }): Promise<string> {
-	const folder = join(homedir(), "Videos", "OpenCut");
+	return nextFreePath({
+		folder: join(homedir(), "Videos", "OpenCut"),
+		name,
+		extension,
+		fallbackName: "OpenCut export",
+	});
+}
+
+/** A path in `folder` (created if needed) that doesn't overwrite anything. */
+export async function nextFreePath({
+	folder,
+	name,
+	extension,
+	fallbackName,
+}: {
+	folder: string;
+	name: string;
+	extension: string;
+	fallbackName: string;
+}): Promise<string> {
 	await mkdir(folder, { recursive: true });
 
 	const safeName =
-		parse(name).name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").trim() ||
-		"OpenCut export";
+		parse(name).name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").trim().slice(0, 120) ||
+		fallbackName;
 	for (let attempt = 0; ; attempt++) {
 		const suffix = attempt === 0 ? "" : ` (${attempt})`;
 		const candidate = join(folder, `${safeName}${suffix}.${extension}`);
@@ -94,4 +116,8 @@ export async function nextExportPath({
 			return candidate;
 		}
 	}
+}
+
+export function downloadsFolder(): string {
+	return join(homedir(), "Downloads", "OpenCut");
 }

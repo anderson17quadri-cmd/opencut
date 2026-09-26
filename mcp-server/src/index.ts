@@ -31,8 +31,10 @@ Editing:
 - Looks: list_effects, then add_effect on one clip (clipId) or on every video/image clip in a time range (no clipId). Available: blur, colour adjustment (brightness, contrast, saturation, exposure, temperature…), black & white, sepia, vignette, sharpen, chroma key (green screen removal). add_mask cuts a clip to a shape (circle, heart, star, cinematic bars…).
 - Format for Reels/TikTok/Shorts: set_project aspectRatio "9:16"; YouTube: "16:9"; Instagram feed: "4:5" or "1:1". Then check framing with view_frames and adjust clip scale/position.
 - Music: add_media the audio file, add_to_timeline, set_volume (e.g. -18 dB under speech), animate fade_out at the end.
+- Transitions between shots: add_transition (crossfade, fade_black, slides, zoom), or all=true for every cut.
+- From the internet: when the user asks for music, sound effects, images or b-roll, search_free_media then download_media (it also imports the file). For a link the user gives, download_media directly. YouTube/Instagram/TikTok pages can't be downloaded. Mention the license/credit when it requires attribution.
 
-Slow operations (export, transcription, captions, silence removal) may answer \"still working\" with a taskId: call check_task with it until you get the result.
+Slow operations (export, transcription, captions, silence removal, downloads) may answer \"still working\" with a taskId: call check_task with it until you get the result.
 
 Finish with export_video: it renders and saves under the user's Videos\\OpenCut folder; tell the user the path it returns.
 If a tool says OpenCut is not open, ask the user to open the OpenCut app and try again. Reply to the user in their language.`;
@@ -176,7 +178,7 @@ async function callViewFrames(args: Record<string, unknown>) {
 }
 
 const server = new McpServer(
-	{ name: "opencut", version: "0.3.0" },
+	{ name: "opencut", version: "0.3.1" },
 	{ instructions: INSTRUCTIONS },
 );
 
@@ -738,10 +740,58 @@ server.registerTool(
 );
 
 server.registerTool(
+	"add_transition",
+	{
+		title: "Add transition",
+		description:
+			"Transition between two back-to-back clips (fromClipId, and toClipId or the clip that starts where it ends), or between every cut on the main track with all=true. Types: crossfade (dissolve), fade_black (dip to black), slide_left/right/up/down (new shot pushes in), zoom. Clips are overlapped by the duration (using spare footage when available, otherwise later clips move earlier); audio crossfades too. One undo step.",
+		inputSchema: {
+			type: z.enum(["crossfade", "fade_black", "slide_left", "slide_right", "slide_up", "slide_down", "zoom"]),
+			fromClipId: z.string().optional(),
+			toClipId: z.string().optional(),
+			all: z.boolean().optional().describe("Every cut on the main track"),
+			duration: z.number().min(0.1).max(5).optional().describe("Seconds, default 0.6"),
+		},
+	},
+	(args) => callOpenCut("add_transition", args),
+);
+
+server.registerTool(
+	"search_free_media",
+	{
+		title: "Search free media online",
+		description:
+			"Search openly licensed media to use in the video: music and sound effects (Openverse/Jamendo/Freesound), images (Openverse/Flickr/Wikimedia) and video clips (Wikimedia Commons). Returns direct file URLs with license and attribution; then use download_media. Use English keywords. By default only licenses that allow commercial use.",
+		inputSchema: {
+			query: z.string().min(1),
+			type: z.enum(["music", "sound", "audio", "image", "video"]),
+			limit: z.number().int().min(1).max(30).optional(),
+			commercialUse: z.boolean().optional().describe("false to include non-commercial licenses too"),
+		},
+	},
+	(args) => callOpenCut("search_free_media", args),
+);
+
+server.registerTool(
+	"download_media",
+	{
+		title: "Download media from the internet",
+		description:
+			"Download a video, audio or image file from a direct link into the user's Downloads\\OpenCut folder and import it into the open project (returns the path and the new mediaId for add_to_timeline). Works with direct file links (e.g. from search_free_media, or links the user gives you). Web pages such as YouTube, Instagram or TikTok are not files and can't be downloaded; tell the user so. Only download what the user asked for or approved, and respect licenses.",
+		inputSchema: {
+			url: z.string().url(),
+			fileName: z.string().optional().describe("Name to save as (extension added automatically)"),
+			addToProject: z.boolean().optional().describe("Default true: import into the open project"),
+		},
+	},
+	(args) => callOpenCut("download_media", args),
+);
+
+server.registerTool(
 	"check_task",
 	{
 		title: "Wait for a running task",
-		description: "Wait for a slow operation (export, transcription, captions, silence removal) that answered \"still working\" with a taskId, and get its result.",
+		description: "Wait for a slow operation (export, transcription, captions, silence removal, download) that answered \"still working\" with a taskId, and get its result.",
 		inputSchema: { taskId: z.string() },
 	},
 	({ taskId }) => checkTask(taskId),

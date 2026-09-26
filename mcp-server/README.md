@@ -21,7 +21,7 @@ The extension is a small stdio MCP server. Each tool is a POST to
 it to the open window (see `opencut-classic/apps/web/src/agent`). Nothing
 leaves the computer.
 
-Tools (40), roughly what a professional editor does:
+Tools (44), roughly what a professional editor does:
 
 - **Project**: `get_state`, `list_projects`, `create_project`, `open_project`,
   `set_project` (9:16 / 16:9 / 1:1 / 4:5…, fps, colour or blurred background).
@@ -42,12 +42,22 @@ Tools (40), roughly what a professional editor does:
   layer), `update_effect`, `remove_effect` — blur, colour adjustment,
   black & white, sepia, vignette, sharpen, chroma key; `add_mask`,
   `remove_mask`.
+- **Transitions**: `add_transition` (crossfade, dip to black, slides, zoom;
+  one pair or every cut), overlapping with spare footage when there is
+  some, otherwise pulling later clips in.
+- **From the internet**: `search_free_media` (music and sound effects
+  from Openverse, images from Openverse, video from Wikimedia Commons,
+  with license and attribution) and `download_media` (direct links to
+  `Downloads\OpenCut`, imported into the project; only public http(s)
+  hosts, media files up to 4 GB).
 - **Audio**: `set_volume`, `set_speed`, `set_track`.
 - **History / output**: `undo`, `redo`, `seek`, `export_video` (saves to
-  `Videos\OpenCut`).
+  `Videos\OpenCut`), `check_task` for operations that outlast the client's
+  tool timeout.
 
-Captions need internet the first time (the speech model is downloaded once),
-and icon search needs internet; everything else works offline.
+Captions need internet the first time (the speech model is downloaded once);
+icon search, free-media search and downloads need internet; everything else
+works offline.
 
 ## Building
 

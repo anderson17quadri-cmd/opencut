@@ -1,5 +1,6 @@
 import {
 	AddClipEffectCommand,
+	AddTrackCommand,
 	DeleteElementsCommand,
 	DuplicateElementsCommand,
 	InsertElementCommand,
@@ -27,6 +28,7 @@ import type {
 	SceneTracks,
 	TimelineElement,
 	TimelineTrack,
+	VideoTrack,
 } from "@/timeline";
 import {
 	buildGraphicElement,
@@ -1318,6 +1320,293 @@ async function removeSilences(args: Args) {
 	};
 }
 
+
+// ------------------------------------------------------------- transitions
+
+const TRANSITIONS = [
+	"crossfade", "fade_black", "slide_left", "slide_right", "slide_up", "slide_down", "zoom",
+] as const;
+type TransitionType = (typeof TRANSITIONS)[number];
+
+/** Higher = drawn on top. Main is the bottom; overlay[0] is the top. */
+function trackRank(trackId: string): number {
+	const current = tracks();
+	if (current.main.id === trackId) return 0;
+	const index = current.overlay.findIndex((track) => track.id === trackId);
+	return index < 0 ? -1 : current.overlay.length - index;
+}
+
+function isVisualTrack(track: TimelineTrack): track is VideoTrack {
+	return track.type === "video";
+}
+
+const FRAME_EPSILON = 0.05;
+
+function nextClipAfter(ref: ElementRef): ElementRef | null {
+	const { track, element } = findElement(ref.elementId);
+	const end = toSeconds(elementEnd(element) as MediaTime);
+	const candidates = track.elements
+		.filter((other) => other.id !== element.id && Math.abs(toSeconds(other.startTime) - end) < FRAME_EPSILON)
+		.sort((a, b) => a.startTime - b.startTime);
+	return candidates[0] ? { trackId: track.id, elementId: candidates[0].id } : null;
+}
+
+/** A video track directly above `trackId` with nothing in [start, end), or a new one. */
+function freeTrackAbove(trackId: string, start: MediaTime, end: MediaTime): string {
+	const current = tracks();
+	const overlayIndex = current.overlay.findIndex((track) => track.id === trackId);
+	const aboveIndex = overlayIndex < 0 ? current.overlay.length - 1 : overlayIndex - 1;
+	const above = aboveIndex >= 0 ? current.overlay[aboveIndex] : undefined;
+	if (
+		above &&
+		isVisualTrack(above) &&
+		above.elements.every((element) => elementEnd(element) <= start || element.startTime >= end)
+	) {
+		return above.id;
+	}
+	const command = new AddTrackCommand({
+		type: "video",
+		index: overlayIndex < 0 ? current.overlay.length : overlayIndex,
+	});
+	command.execute();
+	return command.getTrackId();
+}
+
+function moveToTrack(ref: ElementRef, targetTrackId: string, patch: Partial<TimelineElement> = {}): ElementRef {
+	const current = tracks();
+	const { element } = findElement(ref.elementId);
+	const moved = { ...element, ...patch } as TimelineElement;
+	const edit = <T extends TimelineTrack>(track: T): T => {
+		if (track.id === ref.trackId) {
+			return { ...track, elements: track.elements.filter((e) => e.id !== element.id) };
+		}
+		if (track.id === targetTrackId) {
+			return {
+				...track,
+				elements: [...track.elements, moved].sort((a, b) => a.startTime - b.startTime),
+			} as T;
+		}
+		return track;
+	};
+	editor().timeline.updateTracks({
+		overlay: current.overlay.map(edit),
+		main: edit(current.main),
+		audio: current.audio.map(edit),
+	});
+	return { trackId: targetTrackId, elementId: element.id };
+}
+
+/**
+ * Pulls everything that starts at or after `from` left by `gap`, then trims
+ * any clip that now runs into the next one on the same track (captions and
+ * titles butting up against each other).
+ */
+function rippleLeft(from: MediaTime, gap: number, except: Set<string>) {
+	const current = tracks();
+	const shift = <T extends TimelineTrack>(track: T): T => ({
+		...track,
+		elements: track.elements.map((element) =>
+			element.startTime >= from && !except.has(element.id)
+				? { ...element, startTime: (element.startTime - gap) as MediaTime }
+				: element,
+		),
+	});
+	editor().timeline.updateTracks({
+		overlay: current.overlay.map(shift),
+		main: shift(current.main),
+		audio: current.audio.map(shift),
+	});
+
+	for (const track of allTracks()) {
+		const sorted = [...track.elements].sort((a, b) => a.startTime - b.startTime);
+		for (let i = 0; i + 1 < sorted.length; i++) {
+			const earlier = sorted[i];
+			const later = sorted[i + 1];
+			if (elementEnd(earlier) > later.startTime && earlier.startTime < later.startTime) {
+				const split = new SplitElementsCommand({
+					elements: [{ trackId: track.id, elementId: earlier.id }],
+					splitTime: later.startTime,
+				});
+				split.execute();
+				const [right] = split.getRightSideElements();
+				if (right) new DeleteElementsCommand({ elements: [right] }).execute();
+			}
+		}
+	}
+}
+
+function keyframe(ref: ElementRef, path: string, time: number, value: number, interpolation: "linear" | "bezier") {
+	new UpsertKeyframeCommand({
+		trackId: ref.trackId,
+		elementId: ref.elementId,
+		propertyPath: path,
+		time: fromSeconds(Math.max(0, time)),
+		value,
+		interpolation,
+	}).execute();
+}
+
+function applyTransition(fromRef: ElementRef, toRef: ElementRef, type: TransitionType, seconds: number) {
+	let from = findElement(fromRef.elementId);
+	let to = findElement(toRef.elementId);
+	const fromDuration = toSeconds(from.element.duration);
+	const toDuration = toSeconds(to.element.duration);
+	const d = Math.min(seconds, fromDuration / 2, toDuration / 2);
+	if (d < 0.05) throw new Error("Those clips are too short for a transition.");
+
+	if (type === "fade_black") {
+		const half = d / 2;
+		const fromRefNow = { trackId: from.track.id, elementId: from.element.id };
+		const toRefNow = { trackId: to.track.id, elementId: to.element.id };
+		const fromOpacity = numberParam(from.element, "opacity", 1);
+		const toOpacity = numberParam(to.element, "opacity", 1);
+		keyframe(fromRefNow, "opacity", fromDuration - half, fromOpacity, "linear");
+		keyframe(fromRefNow, "opacity", fromDuration, 0, "linear");
+		keyframe(toRefNow, "opacity", 0, 0, "linear");
+		keyframe(toRefNow, "opacity", half, toOpacity, "linear");
+		return;
+	}
+
+	// Overlap the two clips by d. Prefer the incoming clip's unused head
+	// (source media before its in-point) so nothing else has to move;
+	// otherwise pull everything after the cut left by d.
+	const gap = fromSeconds(d);
+	const cut = to.element.startTime;
+	const rate = "retime" in to.element && to.element.retime ? to.element.retime.rate : 1;
+	const headroom = (to.element.trimStart ?? 0) / rate;
+	const sameTrack = from.track.id === to.track.id;
+
+	if (headroom >= gap && (to.element.type === "video" || to.element.type === "image")) {
+		const extended: Partial<TimelineElement> = {
+			startTime: (cut - gap) as MediaTime,
+			duration: (to.element.duration + gap) as MediaTime,
+			trimStart: (to.element.trimStart - gap * rate) as MediaTime,
+		};
+		if (sameTrack) {
+			const target = freeTrackAbove(from.track.id, (cut - gap) as MediaTime, elementEnd(to.element) as MediaTime);
+			moveToTrack({ trackId: to.track.id, elementId: to.element.id }, target, extended);
+		} else {
+			replaceElement({ trackId: to.track.id, elementId: to.element.id }, { ...to.element, ...extended } as TimelineElement);
+		}
+	} else {
+		// Lift the incoming clip off the shared track first, so pulling it
+		// left doesn't collide with (and trim) the outgoing clip.
+		if (sameTrack) {
+			const target = freeTrackAbove(
+				from.track.id,
+				(cut - gap) as MediaTime,
+				(elementEnd(to.element) - gap) as MediaTime,
+			);
+			moveToTrack({ trackId: to.track.id, elementId: to.element.id }, target);
+		}
+		rippleLeft(cut, gap, new Set());
+	}
+
+	from = findElement(fromRef.elementId);
+	to = findElement(toRef.elementId);
+	const fromNow = { trackId: from.track.id, elementId: from.element.id };
+	const toNow = { trackId: to.track.id, elementId: to.element.id };
+	const incomingOnTop = trackRank(to.track.id) > trackRank(from.track.id);
+	const overlapStartInFrom = toSeconds(from.element.duration) - d;
+	const { width, height } = getCanvasSize();
+
+	// Audio always crossfades.
+	if (AUDIO_TYPES.has(from.element.type)) {
+		const volume = numberParam(from.element, "volume", 0);
+		keyframe(fromNow, "volume", overlapStartInFrom, volume, "linear");
+		keyframe(fromNow, "volume", overlapStartInFrom + d, -60, "linear");
+	}
+	if (AUDIO_TYPES.has(to.element.type)) {
+		const volume = numberParam(to.element, "volume", 0);
+		keyframe(toNow, "volume", 0, -60, "linear");
+		keyframe(toNow, "volume", d, volume, "linear");
+	}
+
+	// Picture: animate whichever clip is on top — bring the incoming one in,
+	// or take the outgoing one away.
+	const top = incomingOnTop ? { ref: toNow, element: to.element, start: 0 } : { ref: fromNow, element: from.element, start: overlapStartInFrom };
+	const [a, b] = incomingOnTop ? [0, 1] : [1, 0];
+	const at = (fraction: number) => top.start + d * fraction;
+	const opacity = numberParam(top.element, "opacity", 1);
+	switch (type) {
+		case "crossfade":
+			keyframe(top.ref, "opacity", at(0), opacity * a, "linear");
+			keyframe(top.ref, "opacity", at(1), opacity * b, "linear");
+			break;
+		case "zoom": {
+			const sx = numberParam(top.element, "transform.scaleX", 1);
+			const sy = numberParam(top.element, "transform.scaleY", 1);
+			const big = 1.35;
+			keyframe(top.ref, "opacity", at(0), opacity * a, "bezier");
+			keyframe(top.ref, "opacity", at(1), opacity * b, "bezier");
+			keyframe(top.ref, "transform.scaleX", at(0), sx * (incomingOnTop ? big : 1), "bezier");
+			keyframe(top.ref, "transform.scaleX", at(1), sx * (incomingOnTop ? 1 : big), "bezier");
+			keyframe(top.ref, "transform.scaleY", at(0), sy * (incomingOnTop ? big : 1), "bezier");
+			keyframe(top.ref, "transform.scaleY", at(1), sy * (incomingOnTop ? 1 : big), "bezier");
+			break;
+		}
+		default: {
+			const horizontal = type === "slide_left" || type === "slide_right";
+			const path = horizontal ? "transform.positionX" : "transform.positionY";
+			const base = numberParam(top.element, path, 0);
+			// slide_left: the new shot enters from the right moving left.
+			const sign = type === "slide_left" || type === "slide_up" ? 1 : -1;
+			const distance = (horizontal ? width : height) * sign;
+			if (incomingOnTop) {
+				keyframe(top.ref, path, at(0), base + distance, "bezier");
+				keyframe(top.ref, path, at(1), base, "bezier");
+			} else {
+				keyframe(top.ref, path, at(0), base, "bezier");
+				keyframe(top.ref, path, at(1), base - distance, "bezier");
+			}
+		}
+	}
+}
+
+async function addTransition(args: Args) {
+	requireOpenProject();
+	const type = str(args, "type") as TransitionType;
+	if (!TRANSITIONS.includes(type)) throw new Error(`Unknown transition. Use: ${TRANSITIONS.join(", ")}`);
+	const seconds = optNum(args, "duration") ?? 0.6;
+
+	let pairs: Array<[ElementRef, ElementRef]>;
+	if (args.all === true) {
+		const main = tracks().main;
+		const sorted = [...main.elements].sort((a, b) => a.startTime - b.startTime);
+		pairs = [];
+		for (let i = 0; i + 1 < sorted.length; i++) {
+			const gap = toSeconds(sorted[i + 1].startTime) - toSeconds(elementEnd(sorted[i]) as MediaTime);
+			if (Math.abs(gap) < FRAME_EPSILON) {
+				pairs.push([
+					{ trackId: main.id, elementId: sorted[i].id },
+					{ trackId: main.id, elementId: sorted[i + 1].id },
+				]);
+			}
+		}
+		if (pairs.length === 0) throw new Error("There are no back-to-back clips on the main track to join.");
+	} else {
+		const from = findElement(str(args, "fromClipId"));
+		const fromRef = { trackId: from.track.id, elementId: from.element.id };
+		const toId = opt(args, "toClipId", isString);
+		const toRef = toId
+			? (() => {
+					const found = findElement(toId);
+					return { trackId: found.track.id, elementId: found.element.id };
+				})()
+			: nextClipAfter(fromRef);
+		if (!toRef) throw new Error("No clip starts right where that one ends. Give toClipId.");
+		pairs = [[fromRef, toRef]];
+	}
+
+	await asOneStep(() => {
+		for (const [fromRef, toRef] of pairs) applyTransition(fromRef, toRef, type, seconds);
+	});
+	return {
+		transitions: pairs.length,
+		durationSeconds: toSeconds(editor().timeline.getTotalDuration()),
+	};
+}
+
 // ---------------------------------------------------------------- dispatch
 
 export async function runProTool({
@@ -1374,6 +1663,8 @@ export async function runProTool({
 			return findSilenceRanges(args);
 		case "remove_silences":
 			return removeSilences(args);
+		case "add_transition":
+			return addTransition(args);
 		default:
 			throw new Error(`Unknown tool: ${tool}`);
 	}
