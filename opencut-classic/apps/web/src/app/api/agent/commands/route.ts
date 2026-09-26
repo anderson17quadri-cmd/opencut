@@ -12,8 +12,16 @@ const bodySchema = z.object({
 });
 
 const DEFAULT_TIMEOUT_MS = 2 * 60_000;
-// Rendering a long video in the browser can take a while.
-const EXPORT_TIMEOUT_MS = 60 * 60_000;
+// Rendering a long video in the browser can take a while, and the first
+// transcription downloads the speech model.
+const SLOW_TOOL_TIMEOUT_MS: Record<string, number> = {
+	export_video: 60 * 60_000,
+	transcribe: 30 * 60_000,
+	generate_captions: 30 * 60_000,
+	find_silences: 10 * 60_000,
+	remove_silences: 10 * 60_000,
+	view_frames: 5 * 60_000,
+};
 
 export async function POST(request: NextRequest) {
 	if (!isFromLocalProcess(request)) {
@@ -49,7 +57,7 @@ export async function POST(request: NextRequest) {
 	const reply = await dispatch({
 		tool,
 		args,
-		timeoutMs: tool === "export_video" ? EXPORT_TIMEOUT_MS : DEFAULT_TIMEOUT_MS,
+		timeoutMs: SLOW_TOOL_TIMEOUT_MS[tool] ?? DEFAULT_TIMEOUT_MS,
 	});
 	return NextResponse.json(reply);
 }

@@ -2,9 +2,9 @@
   "manifest_version": "0.2",
   "name": "opencut",
   "display_name": "OpenCut",
-  "version": "0.2.0",
-  "description": "Let Claude edit your videos in the OpenCut app.",
-  "long_description": "Connects Claude to the OpenCut video editor running on this computer. Claude can import your videos, cut, trim, speed up, add text, adjust volume and export, and every change appears live in the OpenCut window. OpenCut must be open for the tools to work.",
+  "version": "0.3.0",
+  "description": "Deixe o Claude editar seus vídeos no OpenCut, como um editor profissional.",
+  "long_description": "Conecta o Claude ao editor de vídeo OpenCut aberto neste computador. O Claude importa seus vídeos, corta, remove silêncios, gera e estiliza legendas, coloca títulos, ícones, emojis e formas, anima, aplica efeitos de cor, chroma key e máscaras, muda o formato (Reels/TikTok/YouTube), vê o resultado quadro a quadro e exporta. Tudo aparece ao vivo na janela do OpenCut e dá para desfazer com Ctrl+Z. O OpenCut precisa estar aberto.",
   "author": {
     "name": "anderson17quadri-cmd",
     "url": "https://github.com/anderson17quadri-cmd/opencut"
@@ -19,32 +19,191 @@
     "entry_point": "server/index.js",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/server/index.js"]
+      "args": [
+        "${__dirname}/server/index.js"
+      ]
     }
   },
   "tools": [
-    { "name": "get_state", "description": "See the open project, its clips and media" },
-    { "name": "list_media_files", "description": "Find video, audio and image files on this computer" },
-    { "name": "list_projects", "description": "List OpenCut projects" },
-    { "name": "create_project", "description": "Create and open a new project" },
-    { "name": "open_project", "description": "Open an existing project" },
-    { "name": "add_media", "description": "Import a file into the project" },
-    { "name": "add_to_timeline", "description": "Place imported media on the timeline" },
-    { "name": "add_text", "description": "Add a title or caption" },
-    { "name": "split_clip", "description": "Split a clip at a time" },
-    { "name": "delete_clips", "description": "Delete clips" },
-    { "name": "move_clip", "description": "Move a clip" },
-    { "name": "set_speed", "description": "Speed up or slow down a clip" },
-    { "name": "set_volume", "description": "Change a clip's volume or mute it" },
-    { "name": "seek", "description": "Move the playhead" },
-    { "name": "undo", "description": "Undo the last edit" },
-    { "name": "redo", "description": "Redo the last undone edit" },
-    { "name": "export_video", "description": "Render the video to the Videos folder" }
+    {
+      "name": "get_state",
+      "description": "Ver o projeto aberto, camadas, clipes e mídias"
+    },
+    {
+      "name": "view_frames",
+      "description": "Ver quadros do vídeo editado como imagem"
+    },
+    {
+      "name": "list_media_files",
+      "description": "Achar vídeos, áudios e imagens no computador"
+    },
+    {
+      "name": "list_projects",
+      "description": "Listar projetos"
+    },
+    {
+      "name": "create_project",
+      "description": "Criar e abrir um projeto"
+    },
+    {
+      "name": "open_project",
+      "description": "Abrir um projeto"
+    },
+    {
+      "name": "set_project",
+      "description": "Formato (9:16, 16:9…), fps e fundo"
+    },
+    {
+      "name": "add_media",
+      "description": "Importar um arquivo"
+    },
+    {
+      "name": "add_to_timeline",
+      "description": "Colocar mídia na linha do tempo"
+    },
+    {
+      "name": "add_text",
+      "description": "Adicionar título ou texto"
+    },
+    {
+      "name": "set_clip_properties",
+      "description": "Posição, tamanho, estilo de texto, opacidade"
+    },
+    {
+      "name": "animate",
+      "description": "Animações: fade, zoom, deslizar, pop…"
+    },
+    {
+      "name": "remove_animations",
+      "description": "Remover animações"
+    },
+    {
+      "name": "transcribe",
+      "description": "Transcrever a fala"
+    },
+    {
+      "name": "generate_captions",
+      "description": "Gerar legendas automáticas"
+    },
+    {
+      "name": "add_captions",
+      "description": "Adicionar legendas escritas"
+    },
+    {
+      "name": "search_icons",
+      "description": "Buscar ícones, emojis, logos e bandeiras"
+    },
+    {
+      "name": "add_icon",
+      "description": "Colocar ícone ou emoji no vídeo"
+    },
+    {
+      "name": "add_shape",
+      "description": "Adicionar formas"
+    },
+    {
+      "name": "list_effects",
+      "description": "Listar efeitos"
+    },
+    {
+      "name": "add_effect",
+      "description": "Aplicar efeito (cor, P&B, vinheta, chroma key…)"
+    },
+    {
+      "name": "update_effect",
+      "description": "Ajustar um efeito"
+    },
+    {
+      "name": "remove_effect",
+      "description": "Remover efeito"
+    },
+    {
+      "name": "add_mask",
+      "description": "Aplicar máscara (círculo, coração, barras…)"
+    },
+    {
+      "name": "remove_mask",
+      "description": "Remover máscara"
+    },
+    {
+      "name": "split_clip",
+      "description": "Dividir um clipe"
+    },
+    {
+      "name": "trim_clip",
+      "description": "Aparar um clipe"
+    },
+    {
+      "name": "delete_clips",
+      "description": "Apagar clipes"
+    },
+    {
+      "name": "duplicate_clip",
+      "description": "Duplicar clipe"
+    },
+    {
+      "name": "move_clip",
+      "description": "Mover clipe"
+    },
+    {
+      "name": "cut_range",
+      "description": "Cortar um trecho do vídeo inteiro"
+    },
+    {
+      "name": "find_silences",
+      "description": "Achar silêncios"
+    },
+    {
+      "name": "remove_silences",
+      "description": "Remover silêncios (jump cuts)"
+    },
+    {
+      "name": "set_speed",
+      "description": "Acelerar ou câmera lenta"
+    },
+    {
+      "name": "set_volume",
+      "description": "Volume ou mudo"
+    },
+    {
+      "name": "set_track",
+      "description": "Silenciar ou ocultar uma camada"
+    },
+    {
+      "name": "seek",
+      "description": "Mover o cursor"
+    },
+    {
+      "name": "undo",
+      "description": "Desfazer"
+    },
+    {
+      "name": "redo",
+      "description": "Refazer"
+    },
+    {
+      "name": "export_video",
+      "description": "Exportar o vídeo"
+    },
+    {
+      "name": "check_task",
+      "description": "Esperar uma tarefa demorada terminar"
+    }
   ],
-  "keywords": ["video", "editor", "opencut"],
+  "keywords": [
+    "video",
+    "editor",
+    "opencut"
+  ],
   "license": "MIT",
   "compatibility": {
-    "platforms": ["win32", "darwin", "linux"],
-    "runtimes": { "node": ">=18.0.0" }
+    "platforms": [
+      "win32",
+      "darwin",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
   }
 }

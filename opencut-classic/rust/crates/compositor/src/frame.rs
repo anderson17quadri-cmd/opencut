@@ -24,6 +24,9 @@ pub struct CanvasClearDescriptor {
 pub enum FrameItemDescriptor {
     Layer(LayerDescriptor),
     SceneEffect {
+        // rename_all on the enum only renames variant tags, not the fields
+        // of struct variants; the JS side sends `effectPassGroups`.
+        #[serde(rename = "effectPassGroups")]
         effect_pass_groups: Vec<Vec<EffectPassDescriptor>>,
     },
 }

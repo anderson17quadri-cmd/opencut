@@ -29,7 +29,9 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: opencut-classic/apps/desktop-tauri/src-tauri -> target
+          workspaces: |
+            opencut-classic/apps/desktop-tauri/src-tauri -> target
+            opencut-classic -> target
 
       # Flat node_modules: with bun's isolated (symlinked) layout, Next's
       # standalone output links into a store outside the bundle and the
@@ -40,6 +42,19 @@ jobs:
       - name: Install workspace deps
         working-directory: opencut-classic
         run: bun install --linker hoisted
+
+      # The editor's render/effects engine is Rust compiled to WASM. The
+      # published opencut-wasm package lacks this fork's effect shaders
+      # (colour grade, chroma key), so build it from rust/wasm and swap it
+      # into node_modules before the web build bundles it.
+      - name: Build effects engine (WASM)
+        working-directory: opencut-classic
+        shell: bash
+        run: |
+          rustup target add wasm32-unknown-unknown
+          curl -sSfL https://github.com/rustwasm/wasm-pack/releases/download/v0.13.1/wasm-pack-v0.13.1-x86_64-pc-windows-msvc.tar.gz | tar xz
+          ./wasm-pack-v0.13.1-x86_64-pc-windows-msvc/wasm-pack.exe build rust/wasm --target bundler --out-dir pkg
+          node apps/desktop-tauri/scripts/use-local-wasm.mjs
 
       - name: Build web app (standalone output)
         working-directory: opencut-classic

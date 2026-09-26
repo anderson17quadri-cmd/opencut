@@ -22,6 +22,10 @@ Then, with OpenCut open, ask Claude to edit your videos.
   - `apps/web/src/agent/` + `apps/web/src/app/api/agent/` — the bridge:
     the local server receives commands from the Claude extension and hands
     them to the open editor window, which runs them against the editor core.
+  - `rust/crates/effects/src/shaders/` — adds colour-grade and chroma-key
+    shaders to the upstream effects engine; CI builds `rust/wasm` and swaps
+    it in for the published `opencut-wasm` package
+    (`apps/desktop-tauri/scripts/use-local-wasm.mjs`).
   - `apps/desktop-tauri/` — the Windows shell (Tauri + WebView2). Bundles a
     portable Node runtime and the Next.js standalone build, starts it on
     `127.0.0.1:47821` and opens a native window on it.
@@ -33,6 +37,7 @@ Then, with OpenCut open, ask Claude to edit your videos.
 ```sh
 cd opencut-classic
 bun install --linker hoisted
+bun run build:wasm && node apps/desktop-tauri/scripts/use-local-wasm.mjs
 bun run dev:web                     # http://localhost:3000
 
 cd ../mcp-server

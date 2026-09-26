@@ -9,6 +9,35 @@ use crate::{EffectPass, UniformValue};
 
 const GAUSSIAN_BLUR_SHADER_ID: &str = "gaussian-blur";
 const GAUSSIAN_BLUR_SHADER_SOURCE: &str = include_str!("shaders/gaussian_blur.wgsl");
+const COLOR_GRADE_SHADER_ID: &str = "color-grade";
+const COLOR_GRADE_SHADER_SOURCE: &str = include_str!("shaders/color_grade.wgsl");
+const CHROMA_KEY_SHADER_ID: &str = "chroma-key";
+const CHROMA_KEY_SHADER_SOURCE: &str = include_str!("shaders/chroma_key.wgsl");
+
+// Scalar uniforms of the colour shaders, in the order they fill the
+// p0/p1/p2 vec4 slots of the uniform buffer. Missing ones default to 0.
+const COLOR_GRADE_UNIFORMS: [&str; 12] = [
+    "u_brightness",
+    "u_contrast",
+    "u_saturation",
+    "u_exposure",
+    "u_temperature",
+    "u_tint",
+    "u_hue",
+    "u_vignette",
+    "u_grayscale",
+    "u_sepia",
+    "u_sharpen",
+    "u_fade",
+];
+const CHROMA_KEY_UNIFORMS: [&str; 6] = [
+    "u_key_r",
+    "u_key_g",
+    "u_key_b",
+    "u_similarity",
+    "u_smoothness",
+    "u_spill",
+];
 
 pub struct ApplyEffectsOptions<'a> {
     pub source: &'a wgpu::Texture,
@@ -50,6 +79,7 @@ struct EffectUniformBuffer {
     resolution: [f32; 2],
     direction: [f32; 2],
     scalars: [f32; 4],
+    params: [f32; 12],
 }
 
 impl EffectPipeline {
@@ -77,13 +107,6 @@ impl EffectPipeline {
                     label: Some("effects-fullscreen-shader"),
                     source: wgpu::ShaderSource::Wgsl(FULLSCREEN_SHADER_SOURCE.into()),
                 });
-        let gaussian_blur_shader_module =
-            context
-                .device()
-                .create_shader_module(wgpu::ShaderModuleDescriptor {
-                    label: Some("effects-gaussian-blur-shader"),
-                    source: wgpu::ShaderSource::Wgsl(GAUSSIAN_BLUR_SHADER_SOURCE.into()),
-                });
         let pipeline_layout =
             context
                 .device()
@@ -95,11 +118,18 @@ impl EffectPipeline {
                     ],
                     immediate_size: 0,
                 });
-        let gaussian_blur_pipeline =
+        let build_pipeline = |shader_id: &str, source: &str| {
+            let fragment_module =
+                context
+                    .device()
+                    .create_shader_module(wgpu::ShaderModuleDescriptor {
+                        label: Some(&format!("effects-{shader_id}-shader")),
+                        source: wgpu::ShaderSource::Wgsl(source.into()),
+                    });
             context
                 .device()
                 .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("effects-gaussian-blur-pipeline"),
+                    label: Some(&format!("effects-{shader_id}-pipeline")),
                     layout: Some(&pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &vertex_shader_module,
@@ -116,7 +146,7 @@ impl EffectPipeline {
                         compilation_options: wgpu::PipelineCompilationOptions::default(),
                     },
                     fragment: Some(wgpu::FragmentState {
-                        module: &gaussian_blur_shader_module,
+                        module: &fragment_module,
                         entry_point: Some("fragment_main"),
                         targets: &[Some(wgpu::ColorTargetState {
                             format: context.texture_format(),
@@ -130,9 +160,16 @@ impl EffectPipeline {
                     multisample: wgpu::MultisampleState::default(),
                     multiview_mask: None,
                     cache: None,
-                });
-        let pipelines =
-            HashMap::from([(GAUSSIAN_BLUR_SHADER_ID.to_string(), gaussian_blur_pipeline)]);
+                })
+        };
+        let pipelines = [
+            (GAUSSIAN_BLUR_SHADER_ID, GAUSSIAN_BLUR_SHADER_SOURCE),
+            (COLOR_GRADE_SHADER_ID, COLOR_GRADE_SHADER_SOURCE),
+            (CHROMA_KEY_SHADER_ID, CHROMA_KEY_SHADER_SOURCE),
+        ]
+        .into_iter()
+        .map(|(shader_id, source)| (shader_id.to_string(), build_pipeline(shader_id, source)))
+        .collect();
 
         Self {
             uniform_bind_group_layout,
@@ -268,6 +305,41 @@ fn pack_effect_uniforms(
     height: u32,
 ) -> Result<EffectUniformBuffer, EffectsError> {
     let shader = pass.shader.as_str();
+    let resolution = [width as f32, height as f32];
+    let named: &[&str] = match shader {
+        COLOR_GRADE_SHADER_ID => &COLOR_GRADE_UNIFORMS,
+        CHROMA_KEY_SHADER_ID => &CHROMA_KEY_UNIFORMS,
+        _ => return pack_blur_uniforms(pass, resolution),
+    };
+
+    let mut params = [0.0_f32; 12];
+    for uniform in pass.uniforms.keys() {
+        if !named.contains(&uniform.as_str()) {
+            return Err(EffectsError::UnsupportedUniform {
+                shader: shader.to_string(),
+                uniform: uniform.clone(),
+            });
+        }
+    }
+    for (slot, uniform) in named.iter().enumerate() {
+        if pass.uniforms.contains_key(*uniform) {
+            params[slot] = read_number_uniform(pass, uniform)?;
+        }
+    }
+
+    Ok(EffectUniformBuffer {
+        resolution,
+        direction: [0.0, 0.0],
+        scalars: [0.0; 4],
+        params,
+    })
+}
+
+fn pack_blur_uniforms(
+    pass: &EffectPass,
+    resolution: [f32; 2],
+) -> Result<EffectUniformBuffer, EffectsError> {
+    let shader = pass.shader.as_str();
     let sigma = read_number_uniform(pass, "u_sigma")?;
     let step = read_number_uniform(pass, "u_step")?;
     let direction = read_vec2_uniform(pass, "u_direction")?;
@@ -283,9 +355,10 @@ fn pack_effect_uniforms(
     }
 
     Ok(EffectUniformBuffer {
-        resolution: [width as f32, height as f32],
+        resolution,
         direction,
         scalars: [sigma, step, 0.0, 0.0],
+        params: [0.0; 12],
     })
 }
 

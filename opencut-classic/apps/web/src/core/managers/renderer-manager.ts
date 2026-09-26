@@ -1,6 +1,7 @@
 import type { EditorCore } from "@/core";
 import type { RootNode } from "@/services/renderer/nodes/root-node";
 import type { ExportOptions, ExportResult } from "@/export";
+import type { MediaTime } from "@/wasm";
 import { CanvasRenderer } from "@/services/renderer/canvas-renderer";
 import { SceneExporter } from "@/services/renderer/scene-exporter";
 import { buildScene } from "@/services/renderer/scene-builder";
@@ -78,41 +79,58 @@ export class RendererManager {
 		}
 	}
 
+	/**
+	 * Renders the composition at `time` (the playhead by default) into a new
+	 * canvas at project resolution. Throws when there's nothing to render.
+	 */
+	async renderFrameToCanvas({
+		time,
+	}: {
+		time?: MediaTime;
+	} = {}): Promise<{ canvas: HTMLCanvasElement; time: MediaTime }> {
+		const renderTree = this.getRenderTree();
+		const activeProject = this.editor.project.getActive();
+
+		if (!renderTree || !activeProject) {
+			throw new Error("No project or scene to capture");
+		}
+
+		const duration = this.editor.timeline.getTotalDuration();
+		if (duration === 0) {
+			throw new Error("Project is empty");
+		}
+
+		const { canvasSize, fps } = activeProject.settings;
+		const renderTime = Math.min(
+			time ?? this.editor.playback.getCurrentTime(),
+			this.editor.timeline.getLastFrameTime(),
+		) as MediaTime;
+
+		const renderer = new CanvasRenderer({
+			width: canvasSize.width,
+			height: canvasSize.height,
+			fps,
+		});
+
+		const canvas = document.createElement("canvas");
+		canvas.width = canvasSize.width;
+		canvas.height = canvasSize.height;
+
+		await renderer.renderToCanvas({
+			node: renderTree,
+			time: renderTime,
+			targetCanvas: canvas,
+		});
+
+		return { canvas, time: renderTime };
+	}
+
 	private async createSnapshot(): Promise<SnapshotResult> {
 		try {
-			const renderTree = this.getRenderTree();
 			const activeProject = this.editor.project.getActive();
-
-			if (!renderTree || !activeProject) {
-				return { success: false, error: "No project or scene to capture" };
-			}
-
-			const duration = this.editor.timeline.getTotalDuration();
-			if (duration === 0) {
-				return { success: false, error: "Project is empty" };
-			}
-
-			const { canvasSize, fps } = activeProject.settings;
-			const renderTime = Math.min(
-				this.editor.playback.getCurrentTime(),
-				this.editor.timeline.getLastFrameTime(),
-			);
-
-			const renderer = new CanvasRenderer({
-				width: canvasSize.width,
-				height: canvasSize.height,
-				fps,
-			});
-
-			const tempCanvas = document.createElement("canvas");
-			tempCanvas.width = canvasSize.width;
-			tempCanvas.height = canvasSize.height;
-
-			await renderer.renderToCanvas({
-				node: renderTree,
-				time: renderTime,
-				targetCanvas: tempCanvas,
-			});
+			const { fps } = activeProject.settings;
+			const { canvas: tempCanvas, time: renderTime } =
+				await this.renderFrameToCanvas();
 
 			const blob = await new Promise<Blob | null>((resolve) => {
 				tempCanvas.toBlob((result) => resolve(result), "image/png");

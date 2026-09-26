@@ -1,7 +1,23 @@
 import { effectsRegistry } from "../registry";
 import { blurEffectDefinition } from "./blur";
+import {
+	blackWhiteEffectDefinition,
+	chromaKeyEffectDefinition,
+	colorAdjustEffectDefinition,
+	sepiaEffectDefinition,
+	sharpenEffectDefinition,
+	vignetteEffectDefinition,
+} from "./color";
 
-const defaultEffects = [blurEffectDefinition];
+const defaultEffects = [
+	blurEffectDefinition,
+	colorAdjustEffectDefinition,
+	blackWhiteEffectDefinition,
+	sepiaEffectDefinition,
+	vignetteEffectDefinition,
+	sharpenEffectDefinition,
+	chromaKeyEffectDefinition,
+];
 
 export function registerDefaultEffects(): void {
 	for (const definition of defaultEffects) {

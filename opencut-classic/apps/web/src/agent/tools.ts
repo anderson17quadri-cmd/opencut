@@ -1,8 +1,8 @@
-import { EditorCore } from "@/core";
+import { frameRateToFloat } from "@/fps/utils";
 import { processMediaAssets } from "@/media/processing";
 import type { ExportFormat, ExportQuality } from "@/export";
 import { DEFAULT_EXPORT_OPTIONS } from "@/export/defaults";
-import type { TimelineElement, TimelineTrack } from "@/timeline";
+import type { MediaTime } from "@/wasm";
 import { DEFAULT_NEW_ELEMENT_DURATION } from "@/timeline/creation";
 import { DEFAULTS } from "@/timeline/defaults";
 import {
@@ -10,96 +10,25 @@ import {
 	buildTextElement,
 } from "@/timeline/element-utils";
 import {
-	type MediaTime,
-	mediaTimeFromSeconds,
-	mediaTimeToSeconds,
-} from "@/wasm";
+	type Args,
+	type Navigate,
+	allTracks,
+	describeElement,
+	editor,
+	findElement,
+	fromSeconds,
+	insertAndFind,
+	num,
+	optNum,
+	requireOpenProject,
+	str,
+	toSeconds,
+} from "./helpers";
+import { describeFull, runProTool } from "./pro-tools";
 
 // Every tool here runs inside the OpenCut window, against the same
 // EditorCore the UI uses, so edits show up live and go through undo history.
 // Times cross this boundary in seconds; the editor works in MediaTime ticks.
-
-export type Navigate = (path: string) => void;
-type Args = Record<string, unknown>;
-
-const editor = () => EditorCore.getInstance();
-
-const toSeconds = (time: MediaTime) =>
-	Math.round(mediaTimeToSeconds({ time }) * 1000) / 1000;
-const fromSeconds = (seconds: number) => mediaTimeFromSeconds({ seconds });
-
-function str(args: Args, key: string): string {
-	const value = args[key];
-	if (typeof value !== "string" || !value) {
-		throw new Error(`"${key}" is required`);
-	}
-	return value;
-}
-
-function num(args: Args, key: string): number {
-	const value = args[key];
-	if (typeof value !== "number" || !Number.isFinite(value)) {
-		throw new Error(`"${key}" must be a number`);
-	}
-	return value;
-}
-
-function optNum(args: Args, key: string): number | undefined {
-	return args[key] === undefined || args[key] === null
-		? undefined
-		: num(args, key);
-}
-
-function allTracks(): TimelineTrack[] {
-	const tracks = editor().scenes.getActiveScene().tracks;
-	return [...tracks.overlay, tracks.main, ...tracks.audio];
-}
-
-function findElement(elementId: string): {
-	track: TimelineTrack;
-	element: TimelineElement;
-} {
-	for (const track of allTracks()) {
-		const element = track.elements.find((e) => e.id === elementId);
-		if (element) return { track, element };
-	}
-	throw new Error(`No clip with id ${elementId}. Call get_state for current ids.`);
-}
-
-function allElementIds(): Set<string> {
-	return new Set(allTracks().flatMap((t) => t.elements.map((e) => e.id)));
-}
-
-function describeElement(element: TimelineElement) {
-	return {
-		id: element.id,
-		type: element.type,
-		name: element.name,
-		start: toSeconds(element.startTime),
-		end: toSeconds((element.startTime + element.duration) as MediaTime),
-		duration: toSeconds(element.duration),
-		...("mediaId" in element ? { mediaId: element.mediaId } : {}),
-		...(element.type === "text"
-			? { text: element.params.content }
-			: {}),
-		...("retime" in element && element.retime
-			? { speed: element.retime.rate }
-			: {}),
-		...(element.type === "video" || element.type === "audio"
-			? { volumeDb: element.params.volume, muted: element.params.muted }
-			: {}),
-	};
-}
-
-function requireOpenProject() {
-	const project = editor().project.getActiveOrNull();
-	if (!project || !window.location.pathname.startsWith("/editor/")) {
-		throw new Error(
-			"No project is open. Use list_projects + open_project, or create_project.",
-		);
-	}
-	return project;
-}
 
 // Opening the editor page reloads the project from storage, replacing the
 // in-memory timeline — editing before that load finishes gets wiped. So
@@ -136,18 +65,19 @@ function getState() {
 		project: {
 			id: project.metadata.id,
 			name: project.metadata.name,
-			fps: project.settings.fps,
+			fps: frameRateToFloat(project.settings.fps),
 			width: project.settings.canvasSize.width,
 			height: project.settings.canvasSize.height,
 		},
 		durationSeconds: toSeconds(e.timeline.getTotalDuration()),
+		playheadSeconds: toSeconds(e.playback.getCurrentTime()),
 		tracks: allTracks().map((track) => ({
 			id: track.id,
 			type: track.type,
 			name: track.name,
 			...("muted" in track ? { muted: track.muted } : {}),
 			...("hidden" in track ? { hidden: track.hidden } : {}),
-			clips: track.elements.map(describeElement),
+			clips: track.elements.map(describeFull),
 		})),
 		media: e.media.getAssets().map((asset) => ({
 			id: asset.id,
@@ -222,18 +152,6 @@ async function addMedia(args: Args) {
 		width: asset.width,
 		height: asset.height,
 	};
-}
-
-function insertAndFind(
-	insert: () => void,
-): { track: TimelineTrack; element: TimelineElement } {
-	const before = allElementIds();
-	insert();
-	for (const track of allTracks()) {
-		const element = track.elements.find((e) => !before.has(e.id));
-		if (element) return { track, element };
-	}
-	throw new Error("The editor rejected the clip (overlap or unsupported track).");
 }
 
 function addToTimeline(args: Args) {
@@ -430,6 +348,8 @@ async function exportVideo(args: Args) {
 		: { path, note: "MP4 encoding isn't available here, so it was saved as WebM." };
 }
 
+export type { Navigate };
+
 export async function runAgentTool({
 	tool,
 	args,
@@ -475,6 +395,6 @@ export async function runAgentTool({
 		case "export_video":
 			return exportVideo(args);
 		default:
-			throw new Error(`Unknown tool: ${tool}`);
+			return runProTool({ tool, args });
 	}
 }
