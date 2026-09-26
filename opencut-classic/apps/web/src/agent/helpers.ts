@@ -108,11 +108,37 @@ export function requireOpenProject() {
 	return project;
 }
 
+/** Projects whose frame size Claude chose on purpose (set_project). */
+const chosenFormat = new Set<string>();
+
+export function rememberChosenFormat(projectId: string) {
+	chosenFormat.add(projectId);
+}
+
 export function insertAndFind(
 	insert: () => void,
 ): { track: TimelineTrack; element: TimelineElement } {
 	const before = allElementIds();
+	const project = editor().project.getActive();
+	const canvasBefore = project?.settings.canvasSize;
 	insert();
+	// The editor resizes the frame to the first clip dropped into an empty
+	// timeline. Keep a format chosen with set_project (e.g. 9:16 for Reels
+	// with 16:9 footage).
+	const after = editor().project.getActive();
+	if (
+		project &&
+		canvasBefore &&
+		after &&
+		chosenFormat.has(project.metadata.id) &&
+		(after.settings.canvasSize.width !== canvasBefore.width ||
+			after.settings.canvasSize.height !== canvasBefore.height)
+	) {
+		void editor().project.updateSettings({
+			settings: { canvasSize: canvasBefore },
+			pushHistory: false,
+		});
+	}
 	for (const track of allTracks()) {
 		const element = track.elements.find((e) => !before.has(e.id));
 		if (element) return { track, element };

@@ -23,6 +23,7 @@ import {
 import { ICON_ID_PATTERN, iconSvgUrl } from "./icons";
 import { type ImageAnimation, type ImageStyle, imagePlacementCode } from "./image-placement";
 import { ANCHORS } from "./layout";
+import { SOUND_LEAD, type SoundEffect, soundEffectFile, soundEffectFileName } from "./sound-effects";
 import { cutoutPerson } from "./vision";
 import {
 	type MotionGraphicSpec,
@@ -383,6 +384,7 @@ async function placeImage(args: Args) {
 			tilt: optNum(args, "tilt") ?? 0,
 			label,
 			labelFont,
+			credit: typeof args.credit === "string" && args.credit.trim() ? args.credit.trim().slice(0, 90) : null,
 			kenBurns: args.kenBurns !== false,
 		}),
 		mode: "2d",
@@ -400,13 +402,53 @@ async function placeImage(args: Args) {
 		start,
 		trackIndex: behindPerson ? undefined : 0,
 	});
+	const sound = await addSoundEffect({ effect: args.sound, at: start });
 	return {
 		...result,
+		...(sound ? { soundClipId: sound.clipId } : {}),
 		imageMediaId: asset.id,
 		style,
 		animation,
 		note: "Check it with view_frames. To change it, delete_clips this clip and call place_image again.",
 	};
+}
+
+const SOUND_EFFECTS: SoundEffect[] = ["pop", "whoosh", "swoosh_down"];
+
+/** Puts a synthesized pop/whoosh on an audio layer, timed to `at`. */
+async function addSoundEffect({ effect, at }: { effect: unknown; at: number }) {
+	if (!SOUND_EFFECTS.includes(effect as SoundEffect)) return null;
+	const kind = effect as SoundEffect;
+	// One copy per project, reused by every picture.
+	let asset = editor()
+		.media.getAssets()
+		.find((candidate) => candidate.type === "audio" && candidate.name === soundEffectFileName(kind));
+	if (!asset) {
+		const media = await importMediaFile(await soundEffectFile(kind));
+		asset = editor()
+			.media.getAssets()
+			.find((candidate) => candidate.id === media.mediaId);
+	}
+	if (!asset) return null;
+	const found = asset;
+	return asOneStep(() => {
+		const before = new Set(allTracks().flatMap((t) => t.elements.map((e) => e.id)));
+		new InsertElementCommand({
+			element: buildElementFromMedia({
+				mediaId: found.id,
+				mediaType: found.type,
+				name: found.name,
+				duration: fromSeconds(found.duration ?? 0.5),
+				startTime: fromSeconds(Math.max(0, at - SOUND_LEAD[kind])),
+			}),
+			placement: { mode: "auto", trackType: "audio" },
+		}).execute();
+		for (const track of allTracks()) {
+			const inserted = track.elements.find((e: TimelineElement) => !before.has(e.id));
+			if (inserted) return { clipId: inserted.id };
+		}
+		return null;
+	});
 }
 
 export async function runGraphicsTool({

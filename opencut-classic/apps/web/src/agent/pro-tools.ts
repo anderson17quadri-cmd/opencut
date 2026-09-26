@@ -50,6 +50,7 @@ import {
 	fromSeconds,
 	num,
 	optNum,
+	rememberChosenFormat,
 	requireOpenProject,
 	str,
 	toSeconds,
@@ -1168,6 +1169,7 @@ async function setProject(args: Args) {
 	if (Object.keys(settings).length === 0) throw new Error("Nothing to change.");
 
 	await editor().project.updateSettings({ settings });
+	if (settings.canvasSize) rememberChosenFormat(project.metadata.id);
 	const next = editor().project.getActive().settings;
 	return {
 		width: next.canvasSize.width,

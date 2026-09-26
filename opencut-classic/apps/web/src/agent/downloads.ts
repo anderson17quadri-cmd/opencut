@@ -12,7 +12,7 @@ import { downloadsFolder, mediaMimeType, nextFreePath } from "./local-files";
 // the open project like any local file.
 
 const USER_AGENT =
-	"OpenCut-desktop/0.3 (video editor; https://github.com/anderson17quadri-cmd/opencut)";
+	"OpenCut-desktop/0.6 (video editor; https://github.com/anderson17quadri-cmd/opencut)";
 const MAX_DOWNLOAD_BYTES = 4 * 1024 ** 3;
 const MAX_REDIRECTS = 5;
 
@@ -172,9 +172,17 @@ export async function downloadMedia({
 		throw new Error("That is not a valid link.");
 	}
 
-	const response = await fetchPublic(parsed.toString(), {
-		signal: AbortSignal.timeout(60 * 60_000),
-	});
+	const get = () => fetchPublic(parsed.toString(), { signal: AbortSignal.timeout(60 * 60_000) });
+	let response = await get();
+	if (response.status === 429 || response.status === 503) {
+		// Busy or rate-limited: wait a moment and try once more.
+		await response.body?.cancel();
+		const retryAfter = Number(response.headers.get("retry-after"));
+		await new Promise((resolve) =>
+			setTimeout(resolve, Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 10) * 1000 : 2500),
+		);
+		response = await get();
+	}
 	if (!response.ok || !response.body) {
 		throw new Error(`The site answered ${response.status} ${response.statusText}.`);
 	}
@@ -346,11 +354,20 @@ async function searchCommons({
 		gsrlimit: String(limit),
 		prop: "imageinfo",
 		iiprop: "url|size|mime|extmetadata",
-		iiurlwidth: "360",
+		// A standard thumbnail size (Wikimedia asks clients to use those).
+		iiurlwidth: "330",
 	});
-	const data = (await getJson(`https://commons.wikimedia.org/w/api.php?${params}`)) as {
-		query?: { pages?: Record<string, CommonsPage> };
-	};
+	const api = `https://commons.wikimedia.org/w/api.php?${params}`;
+	type CommonsReply = { query?: { pages?: Record<string, CommonsPage> } };
+	let data: CommonsReply;
+	try {
+		data = (await getJson(api)) as CommonsReply;
+	} catch (error) {
+		// Wikimedia sometimes answers "too many requests"; one retry.
+		if (!/too many|429|rate/i.test(error instanceof Error ? error.message : "")) throw error;
+		await new Promise((resolve) => setTimeout(resolve, 1500));
+		data = (await getJson(api)) as CommonsReply;
+	}
 	return Object.values(data.query?.pages ?? {})
 		.sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
 		.flatMap((page): FreeMediaItem[] => {
@@ -362,7 +379,7 @@ async function searchCommons({
 			return [
 				{
 					title: page.title.replace(/^File:/, "").replace(/\.[a-z0-9]+$/i, ""),
-					url: info.url.split("?")[0],
+					url: kind === "image" ? commonsImageUrl(info.url.split("?")[0], info.width) : info.url.split("?")[0],
 					...(info.thumburl ? { thumbnail: info.thumburl } : {}),
 					type: kind,
 					license: stripHtml(meta.LicenseShortName?.value) ?? "see source page",
@@ -373,6 +390,21 @@ async function searchCommons({
 				},
 			];
 		});
+}
+
+/**
+ * Big pictures are fetched as Wikimedia's standard 1920 px rendition:
+ * plenty for video, much lighter, and what Wikimedia asks for (it
+ * rate-limits downloads of originals).
+ */
+function commonsImageUrl(original: string, width: number | undefined) {
+	const STANDARD_WIDTH = 1920;
+	const match = /^(https:\/\/upload\.wikimedia\.org\/wikipedia\/commons)\/([0-9a-f]\/[0-9a-f]{2})\/([^/]+)$/.exec(original);
+	if (!match || !width || width <= STANDARD_WIDTH) return original;
+	const [, base, hash, name] = match;
+	// GIFs are served as-is.
+	if (/\.gif$/i.test(name)) return original;
+	return `${base}/thumb/${hash}/${name}/${STANDARD_WIDTH}px-${name}`;
 }
 
 /** Interleaves results from several sources; a failing source is skipped. */
