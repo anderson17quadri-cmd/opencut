@@ -1,3 +1,8 @@
+import { upsertPathKeyframe } from "@/animation";
+import type { AnimationInterpolation, AnimationPath } from "@/animation/types";
+import type { ParamValue } from "@/params";
+import { updateElementInSceneTracks } from "@/timeline";
+import { resolveAnimationTarget } from "@/timeline/animation-targets";
 import { TracksSnapshotCommand } from "@/commands";
 import { EditorCore } from "@/core";
 import { processMediaAssets } from "@/media/processing";
@@ -191,6 +196,55 @@ export async function asOneStep<T>(run: () => T | Promise<T>): Promise<T> {
 	return result;
 }
 
+
+export type KeySpecBulk = {
+	path: AnimationPath;
+	/** Seconds from the clip's start. */
+	time: number;
+	value: ParamValue;
+	interpolation?: AnimationInterpolation;
+};
+
+/**
+ * Writes many keyframes on one clip with a single timeline update (one
+ * UpsertKeyframeCommand per key re-renders the editor every time, which
+ * freezes it with hundreds of keys).
+ */
+export function upsertKeyframes({
+	trackId,
+	elementId,
+	keys,
+}: {
+	trackId: string;
+	elementId: string;
+	keys: KeySpecBulk[];
+}) {
+	const current = editor().scenes.getActiveScene().tracks;
+	const updated = updateElementInSceneTracks({
+		tracks: current,
+		trackId,
+		elementId,
+		update: (element) => {
+			let animations = element.animations;
+			for (const key of keys) {
+				const target = resolveAnimationTarget({ element, path: key.path });
+				if (!target) continue;
+				const time = Math.min(Math.max(fromSeconds(key.time), 0), element.duration) as MediaTime;
+				animations = upsertPathKeyframe({
+					animations,
+					propertyPath: key.path,
+					time,
+					value: key.value,
+					interpolation: key.interpolation,
+					channelLayout: target.channelLayout,
+					coerceValue: target.coerceValue,
+				});
+			}
+			return { ...element, animations };
+		},
+	});
+	editor().timeline.updateTracks(updated);
+}
 
 /** Clips made by cutout_person carry this suffix in their name. */
 export const CUTOUT_SUFFIX = "(pessoa)";

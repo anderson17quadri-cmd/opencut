@@ -23,7 +23,7 @@ import {
 import { ICON_ID_PATTERN, iconSvgUrl } from "./icons";
 import { type ImageAnimation, type ImageStyle, imagePlacementCode } from "./image-placement";
 import { ANCHORS } from "./layout";
-import { SOUND_LEAD, type SoundEffect, soundEffectFile, soundEffectFileName } from "./sound-effects";
+import { SOUND_EFFECTS, SOUND_LEAD, type SoundEffect, soundEffectFile, soundEffectFileName } from "./sound-effects";
 import { cutoutPerson } from "./vision";
 import {
 	type MotionGraphicSpec,
@@ -38,7 +38,7 @@ import {
 const MAX_DURATION_SECONDS = 120;
 
 /** A progress notice in the editor while Claude renders something long. */
-function progressToast(label: string) {
+export function progressToast(label: string) {
 	const id = `agent-${label}-${Date.now()}`;
 	let lastShown = -1;
 	toast.loading(`${label}…`, { id });
@@ -78,7 +78,7 @@ async function loadImage(url: string): Promise<ImageBitmap> {
 }
 
 /** Resolves {name: "icon:mdi:heart~ff0000" | "media:<mediaId>"} to bitmaps. */
-async function resolveImages(raw: unknown): Promise<Record<string, ImageBitmap>> {
+export async function resolveImages(raw: unknown): Promise<Record<string, ImageBitmap>> {
 	if (raw === undefined || raw === null) return {};
 	if (typeof raw !== "object" || Array.isArray(raw)) {
 		throw new Error('"images" must map names to "icon:<iconId>" or "media:<mediaId>"');
@@ -174,12 +174,15 @@ export async function renderMotionGraphicClip({
 	name,
 	start,
 	trackIndex,
+	frames,
 }: {
 	spec: MotionGraphicSpec;
 	name: string;
 	start: number;
 	/** Layer position; default: top, but under any person cutout. */
 	trackIndex?: number;
+	/** Per-frame pictures handed to the code as api.frames. */
+	frames?: (index: number, time: number) => Promise<Record<string, ImageBitmap>>;
 }) {
 	const frameCount = Math.max(1, Math.round(spec.duration * spec.fps));
 	const progress = progressToast(`Claude está criando "${name}"`);
@@ -196,7 +199,7 @@ export async function renderMotionGraphicClip({
 			frameCount,
 			name: name.replace(/[^\p{L}\p{N} _-]/gu, "").slice(0, 60) || "motion",
 			drawFrame: async ({ ctx, index, time }) => {
-				const bitmap = await sandbox.renderFrame(index, time);
+				const bitmap = await sandbox.renderFrame(index, time, frames ? await frames(index, time) : undefined);
 				ctx.drawImage(bitmap, 0, 0, ctx.canvas.width, ctx.canvas.height);
 				bitmap.close();
 				progress.update(index / frameCount);
@@ -413,10 +416,17 @@ async function placeImage(args: Args) {
 	};
 }
 
-const SOUND_EFFECTS: SoundEffect[] = ["pop", "whoosh", "swoosh_down"];
 
 /** Puts a synthesized pop/whoosh on an audio layer, timed to `at`. */
-async function addSoundEffect({ effect, at }: { effect: unknown; at: number }) {
+export async function addSoundEffect({
+	effect,
+	at,
+	volumeDb,
+}: {
+	effect: unknown;
+	at: number;
+	volumeDb?: number;
+}) {
 	if (!SOUND_EFFECTS.includes(effect as SoundEffect)) return null;
 	const kind = effect as SoundEffect;
 	// One copy per project, reused by every picture.
@@ -433,14 +443,18 @@ async function addSoundEffect({ effect, at }: { effect: unknown; at: number }) {
 	const found = asset;
 	return asOneStep(() => {
 		const before = new Set(allTracks().flatMap((t) => t.elements.map((e) => e.id)));
+		const base = buildElementFromMedia({
+			mediaId: found.id,
+			mediaType: found.type,
+			name: found.name,
+			duration: fromSeconds(found.duration ?? 0.5),
+			startTime: fromSeconds(Math.max(0, at - SOUND_LEAD[kind])),
+		});
 		new InsertElementCommand({
-			element: buildElementFromMedia({
-				mediaId: found.id,
-				mediaType: found.type,
-				name: found.name,
-				duration: fromSeconds(found.duration ?? 0.5),
-				startTime: fromSeconds(Math.max(0, at - SOUND_LEAD[kind])),
-			}),
+			element:
+				volumeDb === undefined
+					? base
+					: ({ ...base, params: { ...base.params, volume: volumeDb } } as typeof base),
 			placement: { mode: "auto", trackType: "audio" },
 		}).execute();
 		for (const track of allTracks()) {

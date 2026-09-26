@@ -105,7 +105,7 @@ if (CONFIG.mode === "three") {
 } else {
 	ctx = canvas.getContext("2d", { alpha: true });
 }
-const api = { THREE, canvas, ctx, renderer, scene, camera, width: W, height: H, fps: CONFIG.fps, duration: CONFIG.duration, images: {}, state: {}, clamp, lerp, ease, tween, roundRect };
+const api = { THREE, canvas, ctx, renderer, scene, camera, width: W, height: H, fps: CONFIG.fps, duration: CONFIG.duration, images: {}, frames: {}, state: {}, clamp, lerp, ease, tween, roundRect };
 const user = (() => {
 ${spec.code}
 ;return {
@@ -125,6 +125,7 @@ window.addEventListener("message", async (event) => {
 			send({ type: "ready" });
 		} else if (data.type === "frame") {
 			const t = data.time;
+			api.frames = data.frames || {};
 			api.t = t;
 			api.progress = CONFIG.duration > 0 ? t / CONFIG.duration : 0;
 			if (ctx) {
@@ -241,7 +242,11 @@ export class MotionGraphicSandbox {
 		}
 	}
 
-	renderFrame(index: number, time: number): Promise<ImageBitmap> {
+	/**
+	 * Renders one frame. `frames` are per-frame pictures for the code
+	 * (api.frames[name]), e.g. video frames; they are transferred.
+	 */
+	renderFrame(index: number, time: number, frames?: Record<string, ImageBitmap>): Promise<ImageBitmap> {
 		if (this.error) return Promise.reject(this.error);
 		return new Promise((resolve, reject) => {
 			const timer = setTimeout(
@@ -256,7 +261,11 @@ export class MotionGraphicSandbox {
 				clearTimeout(timer);
 				resolve(bitmap);
 			});
-			this.iframe.contentWindow?.postMessage({ type: "frame", index, time }, "*");
+			this.iframe.contentWindow?.postMessage(
+				{ type: "frame", index, time, frames },
+				"*",
+				frames ? Object.values(frames) : [],
+			);
 		});
 	}
 

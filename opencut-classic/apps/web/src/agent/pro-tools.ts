@@ -18,6 +18,7 @@ import { buildDefaultMaskInstance } from "@/masks";
 import type { BuiltinMaskType } from "@/masks/types";
 import { decodeAudioToFloat32 } from "@/media/audio";
 import { extractTimelineAudio } from "@/media/mediabunny";
+import type { AnimationPath } from "@/animation/types";
 import type { ParamValue, ParamValues } from "@/params";
 import { transcriptionService } from "@/services/transcription/service";
 import { VideoCache } from "@/services/video-cache/service";
@@ -54,8 +55,10 @@ import {
 	requireOpenProject,
 	str,
 	toSeconds,
+	upsertKeyframes,
 } from "./helpers";
 import { renderMotionGraphicClip, runGraphicsTool } from "./graphics-tools";
+import { HUMAN_TOOLS, runHumanTool } from "./human-tools";
 import { type KaraokeStyle, groupWords, karaokeCode } from "./karaoke";
 import { createHandLandmarker, videoFrames } from "./vision";
 import {
@@ -597,16 +600,11 @@ async function animate(args: Args) {
 		easing === "linear" ? "linear" : easing === "smooth" || smooth ? "bezier" : "linear";
 
 	await asOneStep(() => {
-		for (const key of keys) {
-			new UpsertKeyframeCommand({
-				trackId: track.id,
-				elementId: element.id,
-				propertyPath: key.path,
-				time: fromSeconds(key.time),
-				value: key.value,
-				interpolation,
-			}).execute();
-		}
+		upsertKeyframes({
+			trackId: track.id,
+			elementId: element.id,
+			keys: keys.map((key) => ({ path: key.path as AnimationPath, time: key.time, value: key.value, interpolation })),
+		});
 	});
 	return describeFull(findElement(element.id).element);
 }
@@ -1877,6 +1875,7 @@ export async function runProTool({
 		case "follow_hand":
 			return followHand(args);
 		default:
+			if (HUMAN_TOOLS.has(tool)) return runHumanTool({ tool, args });
 			return runGraphicsTool({ tool, args });
 	}
 }

@@ -40,7 +40,22 @@ Editing:
 - From the internet: when the user asks for music, sound effects, images or b-roll, search_free_media then download_media (it also imports the file). For a link the user gives, download_media directly. YouTube/Instagram/TikTok pages can't be downloaded. Credits are collected automatically into a text file next to the exported video.
 - Pictures for what is being said (automatic b-roll — "put images when I mention something"): 1) transcribe with words=true; 2) pick the concrete references worth illustrating (products, brands, places, people, objects, foods, numbers/events) — usually one every 3-8 s, not every noun; 3) for each, search_free_media type "image" with English keywords: it returns preview pictures, look at them and choose the one that really shows the thing (skip it if none fits); 4) add_web_image with that url, start = the time the word is spoken (≈0.1 s before), duration 2-4 s, style "card" (pop-up photo, anchor "top" on vertical videos so the face stays clear), "fullscreen" (cutaway covering the frame) or "plain"; alternate positions/styles for variety; sound "pop" (cards) or "whoosh" (fullscreen) gives the pro feel; 5) view_frames at a few of those times to check (keep faces and burned-in captions clear). For a logo, prefer search_icons + add_icon. Never write credits on the video: author and licence of everything downloaded are recorded automatically, and export_video writes a "<video> - créditos.txt" file next to the video (creditsFile) that the user can paste into the post caption if they want — tell them where it is.
 
-Slow operations (export, transcription, captions, silence removal, downloads) may answer \"still working\" with a taskId: call check_task with it until you get the result.
+Editing like a human editor (when the user asks for a professional/viral/"like that video" edit of a talking-head video, do all of this; for smaller asks, pick what fits):
+1. Understand it first: get_state, view_frames at 4-6 times, transcribe words=true. Read the whole script: find the hook, key points, lists, numbers, brand/product/place mentions, reveals, jokes and the call to action.
+2. Clean cut first (it shifts every time after it): remove_silences with tight pacing (minDuration 0.35-0.5, padding 0.08-0.12) and cut_range for false starts or repeated takes you spot in the transcript. Transcribe again afterwards.
+3. Format and framing: set_project 9:16 for Reels/TikTok/Shorts, fill the frame with the talking head, check with view_frames.
+4. Hook in the first 2 s: a bold animated title (create_motion_graphic) with an impact or whoosh, plus a punch-in on the first sentence.
+5. Keep it moving: something should change every 2-4 s. punch_zoom on emphasis words (style "cut", alternate ~1.12 and ~1.25, return to wide in between; "push" for slow build-ups), pictures at mentions (add_web_image), graphics for lists/numbers/comparisons, icons. Never more than two new things at once, and keep the face clear.
+6. Captions: generate_captions style "karaoke", 2-3 words per caption, in the lower third, clear of the face and graphics.
+7. One or two signature moments where the script allows (talking about layers, how something is made, a reveal): explode_layers (the scene turns into 3D glass layers with numbered labels), cutout_person + graphics behind the presenter, follow_hand for objects in the hand, 3D motion graphics (floating screens, objects that explode into parts), picture-in-picture next to an animated explainer.
+8. Sound design: every graphic entrance gets a sound (add_sound_effect or the sound option): pop for small pop-ups, whoosh for movement and transitions, impact for big titles/reveals, click for UI and list items, ding for checkmarks/prices/success, riser to build up to a reveal. Sounds around -8 dB. Music: search_free_media type "music" matching the mood, under the whole video, then duck_music so it dips while the person talks.
+9. Look: a light grade on the talking head (add_effect colour adjustment: a bit more contrast and saturation, slight vignette).
+10. End with a call-to-action graphic in the last 2-3 s (follow/save/comment) with a ding.
+11. Review like an editor: view_frames at every element you added and at a few random times; fix overlaps (captions vs graphics vs face), bad timing and anything cut off; then export_video. Tell the user, briefly, the edit decisions you made and where the file and credits are.
+
+Order matters: timing edits (cuts, speed) → punch_zoom → cutout_person → graphics, pictures, hand-tracked objects → explode_layers (it bakes the frame as it looks then, so do it after the zooms under it) → captions → sounds and music (duck_music last, once the timing is final) → review → export.
+
+Slow operations (export, transcription, captions, silence removal, downloads, motion graphics, cutouts, 3D layers, frame previews) may answer \"still working\" with a taskId: call check_task with it until you get the result.
 
 Finish with export_video: it renders and saves under the user's Videos\\OpenCut folder; tell the user the path it returns.
 If a tool says OpenCut is not open, ask the user to open the OpenCut app and try again. Reply to the user in their language.`;
@@ -168,9 +183,12 @@ async function waitFor(taskId: string, tool: string, startedAt: number, promise:
 async function callOpenCut(
 	tool: string,
 	args: Record<string, unknown> = {},
+	transform?: (result: ToolResult) => ToolResult,
 ): Promise<ToolResult> {
 	const taskId = String(nextTaskId++);
-	return waitFor(taskId, tool, Date.now(), runOnOpenCut(tool, args));
+	// The transform runs even when the result arrives later via check_task.
+	const promise = runOnOpenCut(tool, args).then((result) => (transform ? transform(result) : result));
+	return waitFor(taskId, tool, Date.now(), promise);
 }
 
 async function checkTask(taskId: string): Promise<ToolResult> {
@@ -185,14 +203,16 @@ async function checkTask(taskId: string): Promise<ToolResult> {
 }
 
 /** view_frames returns JPEGs; hand them to Claude as images. */
-async function callViewFrames(args: Record<string, unknown>, tool = "view_frames") {
-	const result = await callOpenCut(tool, args);
+function framesToImages(result: ToolResult): ToolResult {
 	if (result.isError) return result;
 	const first = result.content[0];
-	if (first.type === "text" && first.text.startsWith("OpenCut is still working")) return result;
-	const parsed = JSON.parse(first.type === "text" ? first.text : "{}") as {
-		frames?: Array<{ time: number; image: string }>;
-	};
+	if (first?.type !== "text") return result;
+	let parsed: { frames?: Array<{ time: number; image: string }> };
+	try {
+		parsed = JSON.parse(first.text);
+	} catch {
+		return result;
+	}
 	const content: ToolContent[] = [];
 	for (const frame of parsed.frames ?? []) {
 		content.push({ type: "text", text: `Frame at ${frame.time}s:` });
@@ -201,13 +221,18 @@ async function callViewFrames(args: Record<string, unknown>, tool = "view_frames
 	return { content };
 }
 
+function callViewFrames(args: Record<string, unknown>, tool = "view_frames") {
+	return callOpenCut(tool, args, framesToImages);
+}
+
 /** Image search results carry base64 previews; show them as pictures. */
-async function callSearchWithPreviews(args: Record<string, unknown>): Promise<ToolResult> {
-	const result = await callOpenCut("search_free_media", args);
+function callSearchWithPreviews(args: Record<string, unknown>): Promise<ToolResult> {
+	return callOpenCut("search_free_media", args, previewsToImages);
+}
+
+function previewsToImages(result: ToolResult): ToolResult {
 	const first = result.content[0];
-	if (result.isError || first?.type !== "text" || first.text.startsWith("OpenCut is still working")) {
-		return result;
-	}
+	if (result.isError || first?.type !== "text") return result;
 	let parsed: { results?: Array<Record<string, unknown>> } & Record<string, unknown>;
 	try {
 		parsed = JSON.parse(first.text);
@@ -229,7 +254,7 @@ async function callSearchWithPreviews(args: Record<string, unknown>): Promise<To
 }
 
 const server = new McpServer(
-	{ name: "opencut", version: "0.6.0" },
+	{ name: "opencut", version: "0.7.0" },
 	{ instructions: INSTRUCTIONS },
 );
 
@@ -860,7 +885,7 @@ const placementInputs = {
 	label: z.string().max(80).optional().describe("Short caption under the picture"),
 	font: z.string().optional().describe("Google Font for the label, default Montserrat"),
 	kenBurns: z.boolean().optional().describe("Slow zoom while on screen, default true"),
-	sound: z.enum(["pop", "whoosh", "swoosh_down", "none"]).optional().describe("Sound effect when it appears (made on the spot, no licence needed); default none"),
+	sound: z.enum(["pop", "whoosh", "swoosh_down", "click", "impact", "riser", "ding", "none"]).optional().describe("Sound effect when it appears (made on the spot, no licence needed); default none"),
 	behindPerson: z.boolean().optional().describe("Put it under a cutout_person layer (behind the presenter)"),
 };
 
@@ -978,10 +1003,94 @@ server.registerTool(
 );
 
 server.registerTool(
+	"explode_layers",
+	{
+		title: "3D glass layers shot",
+		description:
+			"The signature shot: the talking-head frame turns sideways in 3D and splits into glass panes spread in depth — the presenter in front, optional graphics/logos in the middle, the background (person painted out) at the back — each with a numbered label (01 Apresentador, 02 …, 03 Fundo), then folds back into the flat frame, so it cuts in and out seamlessly. Renders a new clip right above the video clip for [start, start+duration] (the person is separated with on-device AI), with whoosh sounds on open/close. Layers above (captions) stay flat on top. Best at a moment where the script talks about layers, parts or how something is made.",
+		inputSchema: {
+			clipId: z.string().describe("The talking-head video clip"),
+			start: z.number().min(0).optional().describe("Timeline seconds (default: the clip start)"),
+			duration: z.number().min(2.5).max(20).optional().describe("Seconds, default 5"),
+			labels: z.array(z.string().max(28)).max(3).optional().describe('Pane labels front to back, e.g. ["Apresentador","Logos 3D","Fundo"] (default Portuguese)'),
+			sublabels: z.array(z.string().max(36)).max(3).optional().describe("Small grey text under each label"),
+			middleImages: z
+				.array(z.string())
+				.max(4)
+				.optional()
+				.describe('Pictures for the middle pane: "icon:<iconId>" (search_icons; prefer colour logos such as logos:*, or add ~ffffff for a white icon — the glass is dark) or "media:<mediaId>" of an imported image; omit for two panes only'),
+			accent: z.string().optional().describe("Label number colour, hex (default #ff5a36)"),
+			angle: z.number().min(10).max(60).optional().describe("Turn angle in degrees (default 32)"),
+			font: z.string().optional().describe("Google Font for labels (default Montserrat)"),
+			sound: z.boolean().optional().describe("Whoosh on open/close (default true)"),
+			quality: z.enum(["fast", "best"]).optional().describe("Person separation quality (default fast)"),
+		},
+	},
+	(args) => callOpenCut("explode_layers", args),
+);
+
+server.registerTool(
+	"punch_zoom",
+	{
+		title: "Punch-in zooms on the face",
+		description:
+			"Editor-style zooms on a talking-head clip that keep the face framed (on-device face detection): style \"cut\" jumps in on an emphasis word and back out after hold seconds, \"smooth\" eases in/out, \"push\" slowly pushes in over the hold. Give all zooms for the clip in one call (it replaces earlier zooms on that clip); a person cutout of the clip gets the same zooms.",
+		inputSchema: {
+			clipId: z.string(),
+			zooms: z
+				.array(
+					z.object({
+						at: z.number().describe("Timeline seconds"),
+						scale: z.number().min(1.02).max(2.5).optional(),
+						hold: z.number().min(0.3).max(30).optional().describe("Seconds before going back to wide (or until the next zoom)"),
+						style: z.enum(["cut", "smooth", "push"]).optional(),
+					}),
+				)
+				.optional(),
+			times: z.array(z.number()).optional().describe("Shortcut: zoom times with the shared settings below"),
+			scale: z.number().min(1.02).max(2.5).optional().describe("Default 1.18"),
+			hold: z.number().min(0.3).max(30).optional().describe("Default 2 s"),
+			style: z.enum(["cut", "smooth", "push"]).optional().describe("Default cut"),
+		},
+	},
+	(args) => callOpenCut("punch_zoom", args),
+);
+
+server.registerTool(
+	"add_sound_effect",
+	{
+		title: "Add a sound effect",
+		description:
+			"Put a sound effect on the audio layer, timed so it lands at 'at' (made on the spot, no download or licence): pop (small pop-ups), whoosh (movement, transitions), swoosh_down (things leaving), click (UI, list items), impact (big title, reveal), riser (builds up and ends at 'at'), ding (check, price, success).",
+		inputSchema: {
+			effect: z.enum(["pop", "whoosh", "swoosh_down", "click", "impact", "riser", "ding"]),
+			at: z.number().min(0).optional().describe("Timeline seconds of the visual moment; default the playhead"),
+			volumeDb: z.number().min(-40).max(6).optional().describe("Default 0; around -8 sits well under a voice"),
+		},
+	},
+	(args) => callOpenCut("add_sound_effect", args),
+);
+
+server.registerTool(
+	"duck_music",
+	{
+		title: "Duck music under the voice",
+		description:
+			"Make a music clip dip automatically while someone talks and come back up in the pauses (keys its volume from the other audio). Run it after the cuts are final.",
+		inputSchema: {
+			clipId: z.string().describe("The music clip"),
+			musicDb: z.number().min(-40).max(6).optional().describe("Level in pauses (default -12)"),
+			underVoiceDb: z.number().min(-60).max(0).optional().describe("Level under speech (default -24)"),
+		},
+	},
+	(args) => callOpenCut("duck_music", args),
+);
+
+server.registerTool(
 	"check_task",
 	{
 		title: "Wait for a running task",
-		description: "Wait for a slow operation (export, transcription, captions, silence removal, download) that answered \"still working\" with a taskId, and get its result.",
+		description: "Wait for a slow operation (export, transcription, captions, silence removal, download, motion graphic, cutout, 3D layers, frames) that answered \"still working\" with a taskId, and get its result.",
 		inputSchema: { taskId: z.string() },
 	},
 	({ taskId }) => checkTask(taskId),

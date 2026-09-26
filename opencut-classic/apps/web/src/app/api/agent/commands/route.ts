@@ -29,6 +29,9 @@ const SLOW_TOOL_TIMEOUT_MS: Record<string, number> = {
 	cutout_person: 60 * 60_000,
 	follow_hand: 30 * 60_000,
 	place_image: 10 * 60_000,
+	explode_layers: 30 * 60_000,
+	punch_zoom: 5 * 60_000,
+	duck_music: 10 * 60_000,
 };
 
 const str = (value: unknown) => (typeof value === "string" ? value : "");

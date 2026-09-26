@@ -42,6 +42,16 @@ type HandLandmarker = {
 	detectForVideo(image: TexImageSource, timestampMs: number): HandResult;
 	close(): void;
 };
+type FaceResult = {
+	detections: Array<{
+		boundingBox?: { originX: number; originY: number; width: number; height: number };
+		categories?: Array<{ score: number }>;
+	}>;
+};
+type FaceDetector = {
+	detect(image: TexImageSource): FaceResult;
+	close(): void;
+};
 type VisionModule = {
 	FilesetResolver: { forVisionTasks(path: string): Promise<unknown> };
 	ImageSegmenter: {
@@ -49,6 +59,9 @@ type VisionModule = {
 	};
 	HandLandmarker: {
 		createFromOptions(fileset: unknown, options: unknown): Promise<HandLandmarker>;
+	};
+	FaceDetector: {
+		createFromOptions(fileset: unknown, options: unknown): Promise<FaceDetector>;
 	};
 };
 
@@ -83,7 +96,7 @@ async function withDelegate<T>(create: (delegate: "GPU" | "CPU") => Promise<T>):
  * selfie model is used instead, which is several times faster on the CPU.
  * `personMask` says whether the first mask is the person or the background.
  */
-async function createPersonSegmenter(
+export async function createPersonSegmenter(
 	quality: "auto" | "fast" | "best" = "auto",
 ): Promise<{ segmenter: ImageSegmenter; personMask: "invert-background" | "person" }> {
 	const { module, fileset } = await loadVision();
@@ -122,6 +135,125 @@ export async function createHandLandmarker(): Promise<HandLandmarker> {
 			numHands: 2,
 		}),
 	);
+}
+
+async function createFaceDetector(): Promise<FaceDetector> {
+	const { module, fileset } = await loadVision();
+	return withDelegate((delegate) =>
+		module.FaceDetector.createFromOptions(fileset, {
+			baseOptions: { modelAssetPath: "/api/vision-models/blaze_face_short_range.tflite", delegate },
+			runningMode: "IMAGE",
+			minDetectionConfidence: 0.5,
+		}),
+	);
+}
+
+/**
+ * Finds the most confident face in a frame; returns its centre and size
+ * as fractions of the frame, or null. The detector is made for faces close
+ * to the camera, so the frame is also scanned in overlapping squares to
+ * find smaller faces (a presenter at a desk, a zoomed-out shot).
+ */
+export async function createFaceFinder() {
+	const detector = await createFaceDetector();
+	const crop = new OffscreenCanvas(256, 256);
+	const ctx = crop.getContext("2d");
+	const best = (result: FaceResult) =>
+		result.detections
+			.filter((d) => d.boundingBox)
+			.map((d) => ({ box: d.boundingBox as NonNullable<typeof d.boundingBox>, score: d.categories?.[0]?.score ?? 0 }))
+			.sort((a, b) => b.score - a.score)[0];
+
+	return {
+		find(frame: HTMLCanvasElement | OffscreenCanvas): { x: number; y: number; size: number } | null {
+			const { width, height } = frame;
+			const whole = best(detector.detect(frame as TexImageSource));
+			if (whole && whole.score > 0.6) {
+				return {
+					x: (whole.box.originX + whole.box.width / 2) / width,
+					y: (whole.box.originY + whole.box.height / 2) / height,
+					size: whole.box.width / width,
+				};
+			}
+			if (!ctx) return null;
+			let found = null as { x: number; y: number; size: number; score: number } | null;
+			for (const fraction of [0.5, 0.33]) {
+				const side = Math.min(width, height) * fraction;
+				const step = side / 2;
+				for (let y = 0; y + side <= height + 1; y += step) {
+					for (let x = 0; x + side <= width + 1; x += step) {
+						ctx.clearRect(0, 0, 256, 256);
+						ctx.drawImage(frame, x, y, side, side, 0, 0, 256, 256);
+						const hit = best(detector.detect(crop as unknown as TexImageSource));
+						if (hit && (!found || hit.score > found.score)) {
+							found = {
+								x: (x + ((hit.box.originX + hit.box.width / 2) / 256) * side) / width,
+								y: (y + ((hit.box.originY + hit.box.height / 2) / 256) * side) / height,
+								size: ((hit.box.width / 256) * side) / width,
+								score: hit.score,
+							};
+						}
+					}
+				}
+				if (found && found.score > 0.6) break;
+			}
+			return found ? { x: found.x, y: found.y, size: found.size } : null;
+		},
+		close() {
+			detector.close();
+		},
+	};
+}
+
+/**
+ * Turns a segmenter result into an alpha mask canvas (person opaque,
+ * background transparent) at the segmenter's resolution.
+ */
+export class PersonMasker {
+	private canvas: OffscreenCanvas | null = null;
+	private ctx: OffscreenCanvasRenderingContext2D | null = null;
+	private data: ImageData | null = null;
+
+	constructor(
+		private segmenter: ImageSegmenter,
+		private personMask: "invert-background" | "person",
+	) {}
+
+	static async create(quality: "auto" | "fast" | "best" = "fast") {
+		const { segmenter, personMask } = await createPersonSegmenter(quality);
+		return new PersonMasker(segmenter, personMask);
+	}
+
+	/** Mask for one frame, or null if the segmenter found nothing. */
+	mask(image: TexImageSource, timestampMs: number): OffscreenCanvas | null {
+		const result = this.segmenter.segmentForVideo(image, timestampMs);
+		try {
+			const mask = result.confidenceMasks?.[0];
+			if (!mask) return null;
+			if (!this.canvas || this.canvas.width !== mask.width || this.canvas.height !== mask.height) {
+				this.canvas = new OffscreenCanvas(mask.width, mask.height);
+				this.ctx = this.canvas.getContext("2d");
+				this.data = this.ctx?.createImageData(mask.width, mask.height) ?? null;
+			}
+			if (!this.ctx || !this.data) return null;
+			const values = mask.getAsFloat32Array();
+			const pixels = this.data.data;
+			const invert = this.personMask === "invert-background";
+			for (let i = 0; i < values.length; i++) {
+				const p = invert ? 1 - values[i] : values[i];
+				const a = Math.min(1, Math.max(0, (p - 0.3) / 0.4));
+				pixels[i * 4 + 3] = a * a * (3 - 2 * a) * 255;
+			}
+			this.ctx.putImageData(this.data, 0, 0);
+			return this.canvas;
+		} finally {
+			result.close();
+		}
+	}
+
+	close() {
+		this.segmenter.close();
+	}
 }
 
 /** Iterates decoded frames of `file` between two source times (seconds). */
