@@ -205,11 +205,119 @@ export async function createFaceFinder() {
 	};
 }
 
+export type CutoutQuality = "auto" | "fast" | "best" | "pro";
+
+/** Gives, for a video frame, an alpha mask: person opaque, rest clear. */
+export interface Masker {
+	mask(image: TexImageSource, timestampMs: number): Promise<OffscreenCanvas | null>;
+	close(): void;
+}
+
+/**
+ * Professional matting with MODNet (via transformers.js, the same engine
+ * as the captions): separates hair strand by strand instead of the soft
+ * blob of the fast models. Slower; uses the GPU (WebGPU) when there is one.
+ */
+class ProMasker implements Masker {
+	private canvas: OffscreenCanvas | null = null;
+
+	private constructor(
+		private model: { (inputs: Record<string, unknown>): Promise<Record<string, TransformersTensor>>; dispose?: () => Promise<unknown> },
+		private processor: (image: unknown) => Promise<{ pixel_values: unknown }>,
+		private RawImage: RawImageStatic,
+	) {}
+
+	static async create({ allowCpu }: { allowCpu: boolean }): Promise<Masker> {
+		const transformers = (await import("@huggingface/transformers")) as unknown as {
+			AutoModel: { from_pretrained(id: string, options: unknown): Promise<ProMasker["model"]> };
+			AutoProcessor: { from_pretrained(id: string): Promise<ProMasker["processor"]> };
+			RawImage: RawImageStatic;
+		};
+		const processor = await transformers.AutoProcessor.from_pretrained("Xenova/modnet");
+		// fp32 (26 MB): the 8-bit exports of this model return empty mattes.
+		// GPU first; if it can't run the model, the CPU (WebAssembly).
+		const devices = [
+			...((await hasWebGPU()) ? [{ device: "webgpu", dtype: "fp32" }] : []),
+			...(allowCpu ? [{ dtype: "fp32" }] : []),
+		];
+		let lastError: unknown = null;
+		for (const options of devices) {
+			try {
+				const model = await transformers.AutoModel.from_pretrained("Xenova/modnet", options);
+				const masker = new ProMasker(model, processor, transformers.RawImage);
+				// Warm-up on a blank frame: catches a device that loads but can't
+				// run it. The second run is timed: a GPU that turns out to be
+				// slow (e.g. emulated in software) isn't worth it unless asked.
+				const blank = new OffscreenCanvas(64, 64) as unknown as TexImageSource;
+				await masker.mask(blank);
+				const started = performance.now();
+				await masker.mask(blank);
+				if (!allowCpu && performance.now() - started > MAX_AUTO_FRAME_MS) {
+					masker.close();
+					throw new Error("The GPU is too slow for the pro cutout.");
+				}
+				return masker;
+			} catch (error) {
+				lastError = error;
+			}
+		}
+		throw new Error(
+			`Could not start the pro cutout model (internet needed the first time): ${lastError instanceof Error ? lastError.message : lastError}`,
+		);
+	}
+
+	async mask(image: TexImageSource): Promise<OffscreenCanvas | null> {
+		const source = image as HTMLCanvasElement | OffscreenCanvas;
+		const raw = this.RawImage.fromCanvas(source);
+		const { pixel_values } = await this.processor(raw);
+		const outputs = await this.model({ input: pixel_values });
+		const alpha = Object.values(outputs)[0];
+		const [, , height, width] = alpha.dims;
+		const values = alpha.data as Float32Array;
+		if (!this.canvas || this.canvas.width !== width || this.canvas.height !== height) {
+			this.canvas = new OffscreenCanvas(width, height);
+		}
+		const ctx = this.canvas.getContext("2d");
+		if (!ctx) return null;
+		const data = ctx.createImageData(width, height);
+		for (let i = 0; i < width * height; i++) data.data[i * 4 + 3] = Math.round(Math.min(1, Math.max(0, values[i])) * 255);
+		ctx.putImageData(data, 0, 0);
+		return this.canvas;
+	}
+
+	close() {
+		void this.model.dispose?.();
+	}
+}
+
+type TransformersTensor = { dims: number[]; data: ArrayLike<number> };
+
+/** Per-frame budget for keeping MediaPipe's detailed model in "auto". */
+const MAX_AUTO_SEGMENT_MS = 60;
+
+/** Per-frame budget for choosing MODNet automatically (~10 s per video second). */
+const MAX_AUTO_FRAME_MS = 350;
+
+let webgpuCheck: Promise<boolean> | null = null;
+/** Whether a WebGPU adapter is available (cached). */
+function hasWebGPU(): Promise<boolean> {
+	webgpuCheck ??= (async () => {
+		type Adapter = { isFallbackAdapter?: boolean; info?: { isFallbackAdapter?: boolean } };
+		const gpu = (navigator as { gpu?: { requestAdapter(): Promise<Adapter | null> } }).gpu;
+		if (!gpu) return false;
+		const adapter = await gpu.requestAdapter().catch(() => null);
+		// A software ("fallback") adapter is no faster than the CPU.
+		return Boolean(adapter && !adapter.isFallbackAdapter && !adapter.info?.isFallbackAdapter);
+	})();
+	return webgpuCheck;
+}
+type RawImageStatic = { fromCanvas(canvas: HTMLCanvasElement | OffscreenCanvas): unknown };
+
 /**
  * Turns a segmenter result into an alpha mask canvas (person opaque,
  * background transparent) at the segmenter's resolution.
  */
-export class PersonMasker {
+export class PersonMasker implements Masker {
 	private canvas: OffscreenCanvas | null = null;
 	private ctx: OffscreenCanvasRenderingContext2D | null = null;
 	private data: ImageData | null = null;
@@ -219,14 +327,46 @@ export class PersonMasker {
 		private personMask: "invert-background" | "person",
 	) {}
 
-	static async create(quality: "auto" | "fast" | "best" = "fast") {
-		const { segmenter, personMask } = await createPersonSegmenter(quality);
-		return new PersonMasker(segmenter, personMask);
+	/**
+	 * "pro" = MODNet; "auto" = MODNet when there is a usable GPU (it is
+	 * fast there), otherwise MediaPipe. If MODNet can't start, MediaPipe
+	 * takes over so the edit still happens.
+	 */
+	static async create(quality: CutoutQuality = "fast"): Promise<Masker> {
+		if (quality === "pro" || (quality === "auto" && (await hasWebGPU()))) {
+			try {
+				// "auto" only takes MODNet when it runs on the GPU; on the CPU it is
+				// slow, so only an explicit "pro" accepts that.
+				return await ProMasker.create({ allowCpu: quality === "pro" });
+			} catch (error) {
+				if (quality === "pro") throw error;
+			}
+		}
+		const { segmenter, personMask } = await createPersonSegmenter(quality as "auto" | "fast" | "best");
+		const masker = new PersonMasker(segmenter, personMask);
+		// "auto" picked the detailed model because a GPU answered; if that GPU
+		// is slow (emulated), the fast model gives a similar result sooner.
+		if (quality === "auto" && personMask === "invert-background") {
+			const blank = new OffscreenCanvas(256, 256) as unknown as TexImageSource;
+			await masker.mask(blank, 0);
+			const started = performance.now();
+			await masker.mask(blank, 1);
+			if (performance.now() - started > MAX_AUTO_SEGMENT_MS) {
+				masker.close();
+				const fast = await createPersonSegmenter("fast");
+				return new PersonMasker(fast.segmenter, fast.personMask);
+			}
+		}
+		return masker;
 	}
 
+	private lastTimestampMs = -1;
+
 	/** Mask for one frame, or null if the segmenter found nothing. */
-	mask(image: TexImageSource, timestampMs: number): OffscreenCanvas | null {
-		const result = this.segmenter.segmentForVideo(image, timestampMs);
+	async mask(image: TexImageSource, timestampMs: number): Promise<OffscreenCanvas | null> {
+		// MediaPipe needs strictly increasing timestamps.
+		this.lastTimestampMs = Math.max(this.lastTimestampMs + 1, Math.round(timestampMs));
+		const result = this.segmenter.segmentForVideo(image, this.lastTimestampMs);
 		try {
 			const mask = result.confidenceMasks?.[0];
 			if (!mask) return null;
@@ -308,17 +448,14 @@ export async function cutoutPerson({
 	file: File;
 	start: number;
 	end: number;
-	quality?: "auto" | "fast" | "best";
+	quality?: CutoutQuality;
 	onProgress?: (fraction: number) => void;
 }): Promise<File> {
-	const { segmenter, personMask } = await createPersonSegmenter(quality);
+	const masker = await PersonMasker.create(quality ?? "auto");
 	let output: Output | null = null;
 	let source: CanvasSource | null = null;
 	let outCanvas: OffscreenCanvas | null = null;
 	let outCtx: OffscreenCanvasRenderingContext2D | null = null;
-	let maskCanvas: OffscreenCanvas | null = null;
-	let maskCtx: OffscreenCanvasRenderingContext2D | null = null;
-	let maskData: ImageData | null = null;
 	let lastTimestampMs = -1;
 
 	try {
@@ -343,34 +480,15 @@ export async function cutoutPerson({
 
 			const timestampMs = Math.max(lastTimestampMs + 1, Math.round(frame.timestamp * 1000));
 			lastTimestampMs = timestampMs;
-			const result = segmenter.segmentForVideo(frame.canvas as TexImageSource, timestampMs);
-			const mask = result.confidenceMasks?.[0];
+			const mask = await masker.mask(frame.canvas as TexImageSource, timestampMs);
 
 			outCtx.globalCompositeOperation = "copy";
 			outCtx.drawImage(frame.canvas, 0, 0, frame.width, frame.height);
 			if (mask) {
-				if (!maskCanvas || maskCanvas.width !== mask.width || maskCanvas.height !== mask.height) {
-					maskCanvas = new OffscreenCanvas(mask.width, mask.height);
-					maskCtx = maskCanvas.getContext("2d");
-					maskData = maskCtx?.createImageData(mask.width, mask.height) ?? null;
-				}
-				if (maskCtx && maskData) {
-					const values = mask.getAsFloat32Array();
-					const pixels = maskData.data;
-					const invert = personMask === "invert-background";
-					for (let i = 0; i < values.length; i++) {
-						// Person probability; tighten the soft edge a little.
-						const p = invert ? 1 - values[i] : values[i];
-						const a = Math.min(1, Math.max(0, (p - 0.3) / 0.4));
-						pixels[i * 4 + 3] = a * a * (3 - 2 * a) * 255;
-					}
-					maskCtx.putImageData(maskData, 0, 0);
-					outCtx.globalCompositeOperation = "destination-in";
-					outCtx.imageSmoothingQuality = "high";
-					outCtx.drawImage(maskCanvas, 0, 0, frame.width, frame.height);
-				}
+				outCtx.globalCompositeOperation = "destination-in";
+				outCtx.imageSmoothingQuality = "high";
+				outCtx.drawImage(mask, 0, 0, frame.width, frame.height);
 			}
-			result.close();
 			outCtx.globalCompositeOperation = "source-over";
 
 			await source.add(frame.timestamp - start, frame.duration);
@@ -384,6 +502,6 @@ export async function cutoutPerson({
 			type: "video/webm",
 		});
 	} finally {
-		segmenter.close();
+		masker.close();
 	}
 }

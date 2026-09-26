@@ -2,7 +2,14 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { dispatch } from "@/agent/broker";
 import { downloadMedia, searchFreeMedia, withPreviews } from "@/agent/downloads";
-import { recordAlias, recordDownloadCredit, rememberSearchResults, writeCreditsFile } from "@/agent/credits";
+import {
+	recordAlias,
+	recordDownloadCredit,
+	recordRenderedCredit,
+	rememberSearchResults,
+	writeCreditsFile,
+} from "@/agent/credits";
+import { animationSeen, fetchAnimation, LOTTIE_LICENSE, searchAnimations } from "@/agent/lottie";
 import { defaultMediaFolders, listMediaFolder } from "@/agent/local-files";
 import { isFromLocalProcess } from "@/agent/request-guards";
 
@@ -30,6 +37,7 @@ const SLOW_TOOL_TIMEOUT_MS: Record<string, number> = {
 	follow_hand: 30 * 60_000,
 	place_image: 10 * 60_000,
 	explode_layers: 30 * 60_000,
+	place_animation: 10 * 60_000,
 	punch_zoom: 5 * 60_000,
 	duck_music: 10 * 60_000,
 };
@@ -131,6 +139,42 @@ async function runServerTool(
 			if (!placed.ok) throw new Error(`Imported as media ${mediaId} but placing failed: ${placed.error}`);
 			await linkPlacedPicture(placed.result);
 			return { handled: true, result: { downloadedTo: downloaded.path, ...(placed.result as object) } };
+		}
+		case "search_animations":
+			return {
+				handled: true,
+				result: await searchAnimations({
+					query: str(args.query),
+					limit: typeof args.limit === "number" ? args.limit : undefined,
+					previews: args.previews !== false,
+				}),
+			};
+		case "add_animation": {
+			const url = str(args.url);
+			const animation = await fetchAnimation(url);
+			const { url: _url, ...placement } = args;
+			const placed = await dispatch({
+				tool: "place_animation",
+				args: { ...placement, animation },
+				timeoutMs: SLOW_TOOL_TIMEOUT_MS.place_animation,
+			});
+			if (!placed.ok) throw new Error(placed.error ?? "Could not add the animation.");
+			const mediaId = (placed.result as { mediaId?: string }).mediaId;
+			const info = animationSeen(url);
+			if (mediaId) {
+				await recordRenderedCredit({
+					mediaId,
+					key: `LottieFiles ${url}`,
+					credit: {
+						title: info?.name ?? "Lottie animation",
+						creator: info?.creator,
+						license: LOTTIE_LICENSE,
+						sourcePage: info?.sourcePage,
+						url,
+					},
+				}).catch(() => {});
+			}
+			return { handled: true, result: placed.result };
 		}
 		default:
 			return { handled: false };

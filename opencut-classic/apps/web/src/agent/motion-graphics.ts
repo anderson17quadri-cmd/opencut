@@ -17,7 +17,15 @@ export interface MotionGraphicSpec {
 	fonts?: string[];
 	/** Named images handed to the code as ImageBitmaps (api.images[name]). */
 	images?: Record<string, ImageBitmap>;
+	/** Extra libraries from /vendor loaded before the code (e.g. "lottie"). */
+	vendorScripts?: Array<"lottie">;
+	/** Structured-cloneable data for the code (api.data). */
+	data?: unknown;
 }
+
+const VENDOR_SCRIPTS: Record<"lottie", string> = {
+	lottie: "/vendor/lottie/lottie_canvas.min.js",
+};
 
 const RUNTIME_HELPERS = String.raw`
 const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
@@ -77,6 +85,7 @@ function buildDocument({
 ${fontLinks}
 <style>html,body{margin:0;padding:0;background:transparent;overflow:hidden}</style>
 </head><body><canvas id="c"></canvas>
+${(spec.vendorScripts ?? []).map((name) => `<script src="${origin}${VENDOR_SCRIPTS[name]}"></script>`).join("")}
 <script>
 // Classic script so even a syntax error in the module below is reported.
 window.addEventListener("error", (event) => parent.postMessage({ type: "error", message: String(event.message || event.error), stack: String(event.error && event.error.stack || "") }, "*"));
@@ -120,6 +129,7 @@ window.addEventListener("message", async (event) => {
 	try {
 		if (data.type === "init") {
 			Object.assign(api.images, data.images || {});
+			api.data = data.data;
 			await Promise.all(CONFIG.fonts.flatMap((family) => [400, 700, 900].map((weight) => document.fonts.load(weight + " 32px \\"" + family + "\\"").catch(() => null))));
 			if (user.setup) await user.setup(api);
 			send({ type: "ready" });
@@ -232,7 +242,7 @@ export class MotionGraphicSandbox {
 			await loaded;
 			const ready = this.waitFor("ready", 30_000);
 			this.iframe.contentWindow?.postMessage(
-				{ type: "init", images: this.spec.images ?? {} },
+				{ type: "init", images: this.spec.images ?? {}, data: this.spec.data },
 				"*",
 			);
 			await ready;

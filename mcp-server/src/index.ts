@@ -28,7 +28,7 @@ Editing:
 - Captions: generate_captions transcribes the audio and adds styled captions on their own track (the first run downloads a speech model, which can take a few minutes). add_captions adds captions you write yourself (e.g. translations). Restyle them all later with set_clip_properties using the captions trackId. fontSize ≈ percent of video height × 0.9 (5 = normal captions, 8 = big social-media captions).
 - Layout: set_clip_properties places any visual clip with anchor (top-left … bottom-right, center) plus margin, or x/y (centre, % of the frame), and sizes it with widthPercent/heightPercent. It also styles text (font, size, colour, bold, background box), opacity, rotation, blend mode.
 - Titles: add_text, then set_clip_properties to style and place it, then animate for motion.
-- Icons, emojis, logos and flags: search_icons (English keywords) then add_icon. Shapes (boxes, circles, bars behind text): add_shape.
+- Designer animations (animated emojis/icons, arrows pointing, confetti, checkmarks, like/subscribe/follow buttons, lower thirds, transitions): search_animations then add_animation — prefer these over coding the same thing. Icons, emojis, logos and flags (static): search_icons (English keywords) then add_icon. Shapes (boxes, circles, bars behind text): add_shape.
 - Layers: tracks listed first in get_state are drawn on top. move_layer brings a layer to the front/back or above/below another.
 - Graphics behind the presenter (logos floating behind them, text behind the head, 3D screens in the background, "the scene splits into layers"): run cutout_person on the talking-head clip; motion graphics created before or after it land under the cutout, so they appear between the background and the person. Use move_layer for other clips (icons, text) that should go behind.
 - Motion graphics (animated titles, VS cards, animated explainers/recipes/infographics, counters, 3D objects, floating screens, end cards, anything the built-in tools can't do): write code for create_motion_graphic; iterate with preview_motion_graphic first. Use search_icons ids as images for logos.
@@ -241,9 +241,9 @@ function previewsToImages(result: ToolResult): ToolResult {
 	}
 	const images: ToolContent[] = [];
 	const results = (parsed.results ?? []).map((item, index) => {
-		const { preview, ...rest } = item as { preview?: { data: string; mimeType: string }; title?: unknown };
+		const { preview, ...rest } = item as { preview?: { data: string; mimeType: string }; title?: unknown; name?: unknown };
 		if (preview) {
-			images.push({ type: "text", text: `#${index + 1}: ${String(rest.title ?? "")}` });
+			images.push({ type: "text", text: `#${index + 1}: ${String(rest.title ?? rest.name ?? "")}` });
 			images.push({ type: "image", data: preview.data, mimeType: preview.mimeType });
 		}
 		return { "#": index + 1, ...rest };
@@ -254,7 +254,7 @@ function previewsToImages(result: ToolResult): ToolResult {
 }
 
 const server = new McpServer(
-	{ name: "opencut", version: "0.7.0" },
+	{ name: "opencut", version: "0.8.0" },
 	{ instructions: INSTRUCTIONS },
 );
 
@@ -967,7 +967,10 @@ server.registerTool(
 			"Separate the person from the background of a video clip with on-device AI (MediaPipe). Creates a copy of the clip that shows only the person (transparent background) on the top layer, exactly aligned with the original (same timing, speed, position, animations, effects). With it you can put graphics BEHIND the presenter: create the graphic (create_motion_graphic, add_icon, add_text, floating screens…) and it lands on a layer under the cutout, so it appears between the background and the person — like logos passing behind them or text behind the head. Do the cut after timing edits (split/trim/speed) of that clip; takes roughly real time. First run downloads the AI model (internet needed).",
 		inputSchema: {
 			clipId: z.string().describe("A video clip showing a person"),
-			quality: z.enum(["auto", "fast", "best"]).optional().describe("auto (default): best edges with a GPU, fast model otherwise"),
+			quality: z
+				.enum(["auto", "fast", "best", "pro"])
+				.optional()
+				.describe('auto (default): professional hair-level matting (MODNet) when the PC has a GPU, the fast model otherwise; "pro": always MODNet (slow without a GPU, ~1-3 s per frame); "fast": quickest, rough edges'),
 		},
 	},
 	(args) => callOpenCut("cutout_person", args),
@@ -1003,6 +1006,52 @@ server.registerTool(
 );
 
 server.registerTool(
+	"search_animations",
+	{
+		title: "Search designer animations (Lottie)",
+		description:
+			"Search LottieFiles' free catalogue of animations made by designers — animated icons and emojis, arrows, confetti, checkmarks, likes/subscribe buttons, loaders, lower thirds, transitions, stickers. Returns numbered preview pictures (first frame) so you can pick; then add_animation with its url. Use English keywords. These look far more polished than drawing the same thing with code.",
+		inputSchema: {
+			query: z.string().min(1),
+			limit: z.number().int().min(1).max(20).optional().describe("Default 8"),
+			previews: z.boolean().optional().describe("Default true"),
+		},
+	},
+	(args) => callOpenCut("search_animations", args, previewsToImages),
+);
+
+server.registerTool(
+	"add_animation",
+	{
+		title: "Add a designer animation (Lottie)",
+		description:
+			"Play a Lottie animation (url from search_animations) over the video at a time and place, rendered to a transparent clip on its own top layer. One play-through by default; loop or set duration/speed. Its author and licence go into the credits file automatically.",
+		inputSchema: {
+			url: z.string().url(),
+			start: z.number().min(0).optional().describe("Timeline seconds; default the playhead"),
+			duration: z.number().min(0.3).max(60).optional().describe("Default one play-through"),
+			loop: z.boolean().optional(),
+			speed: z.number().min(0.25).max(4).optional(),
+			anchor: z
+				.enum(["center", "top", "bottom", "left", "right", "top-left", "top-right", "bottom-left", "bottom-right"])
+				.optional(),
+			widthPercent: z.number().min(3).max(100).optional().describe("Default 40"),
+			x: z.number().min(0).max(100).optional().describe("Centre x, % of frame"),
+			y: z.number().min(0).max(100).optional().describe("Centre y, % of frame"),
+			fullscreen: z
+				.boolean()
+				.optional()
+				.describe("Cover the whole frame, cropping the edges — only for animations made full-frame (transitions, backgrounds). For confetti, emojis, icons use widthPercent (100 = full width, nothing cropped)"),
+			fade: z.number().min(0).max(2).optional().describe("Fade in/out seconds (default 0)"),
+			behindPerson: z.boolean().optional().describe("Under a cutout_person layer"),
+			sound: z.enum(["pop", "whoosh", "swoosh_down", "click", "impact", "riser", "ding", "none"]).optional(),
+			name: z.string().optional(),
+		},
+	},
+	(args) => callOpenCut("add_animation", args),
+);
+
+server.registerTool(
 	"explode_layers",
 	{
 		title: "3D glass layers shot",
@@ -1023,7 +1072,7 @@ server.registerTool(
 			angle: z.number().min(10).max(60).optional().describe("Turn angle in degrees (default 32)"),
 			font: z.string().optional().describe("Google Font for labels (default Montserrat)"),
 			sound: z.boolean().optional().describe("Whoosh on open/close (default true)"),
-			quality: z.enum(["fast", "best"]).optional().describe("Person separation quality (default fast)"),
+			quality: z.enum(["auto", "fast", "best", "pro"]).optional().describe('Person separation (default auto: hair-level MODNet with a GPU, fast otherwise; "pro" forces MODNet)'),
 		},
 	},
 	(args) => callOpenCut("explode_layers", args),

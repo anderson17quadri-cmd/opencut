@@ -11,8 +11,10 @@ import { downloadsFolder, mediaMimeType, nextFreePath } from "./local-files";
 // tools. Downloads land in ~/Downloads/OpenCut and are then imported into
 // the open project like any local file.
 
+// "compatible" form: some image CDNs (e.g. StockSnap's) refuse clients
+// that don't look like a browser, but this still says who we are.
 const USER_AGENT =
-	"OpenCut-desktop/0.6 (video editor; https://github.com/anderson17quadri-cmd/opencut)";
+	"Mozilla/5.0 (compatible; OpenCut-desktop/0.8; +https://github.com/anderson17quadri-cmd/opencut)";
 const MAX_DOWNLOAD_BYTES = 4 * 1024 ** 3;
 const MAX_REDIRECTS = 5;
 
@@ -117,6 +119,28 @@ async function fetchPublic(rawUrl: string, init: RequestInit = {}): Promise<Resp
 		return response;
 	}
 	throw new Error("Too many redirects.");
+}
+
+/** Fetches a JSON document from a public URL, up to `maxBytes`. */
+export async function fetchPublicJson(url: string, maxBytes: number): Promise<unknown> {
+	let parsed: URL;
+	try {
+		parsed = new URL(url);
+	} catch {
+		throw new Error("That is not a valid link.");
+	}
+	if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error("Only http(s) links.");
+	const response = await fetchPublic(parsed.toString(), { signal: AbortSignal.timeout(60_000) });
+	if (!response.ok) throw new Error(`The site answered ${response.status} ${response.statusText}.`);
+	const length = Number(response.headers.get("content-length") ?? 0);
+	if (length > maxBytes) throw new Error("That file is too big.");
+	const buffer = Buffer.from(await response.arrayBuffer());
+	if (buffer.byteLength > maxBytes) throw new Error("That file is too big.");
+	try {
+		return JSON.parse(buffer.toString("utf8"));
+	} catch {
+		throw new Error("That link did not return JSON.");
+	}
 }
 
 const MAX_PREVIEW_BYTES = 400_000;
@@ -250,6 +274,8 @@ export interface FreeMediaItem {
 	url: string;
 	/** Small preview image, when the source has one. */
 	thumbnail?: string;
+	/** Where it comes from (stocksnap, wordpress, flickr, wikimedia…). */
+	source?: string;
 	type: "audio" | "image" | "video";
 	license: string;
 	creator?: string;
@@ -274,6 +300,7 @@ async function getJson(url: string): Promise<unknown> {
 
 type OpenverseResult = {
 	title?: string;
+	source?: string;
 	url: string;
 	thumbnail?: string;
 	license: string;
@@ -286,20 +313,35 @@ type OpenverseResult = {
 	height?: number;
 };
 
+function licenseName(license: string, version?: string) {
+	if (license === "cc0") return "CC0 (livre, sem crédito obrigatório)";
+	if (license === "pdm") return "Domínio público";
+	return `CC ${license.toUpperCase()} ${version ?? ""}`.trim();
+}
+
+/** Curated CC0 photo banks: professional-looking stock photos. */
+const PRO_PHOTO_SOURCES = ["stocksnap", "wordpress"];
+
 async function searchOpenverse({
 	query,
 	kind,
 	category,
 	limit,
 	commercial,
+	sources,
+	excludedSources,
 }: {
 	query: string;
 	kind: "audio" | "images";
 	category?: string;
 	limit: number;
 	commercial: boolean;
+	sources?: string[];
+	excludedSources?: string[];
 }): Promise<FreeMediaItem[]> {
 	const params = new URLSearchParams({ q: query, page_size: String(limit) });
+	if (sources?.length) params.set("source", sources.join(","));
+	if (excludedSources?.length) params.set("excluded_source", excludedSources.join(","));
 	// Everything goes into an edit (cut, synced, overlaid), which counts as
 	// an adaptation: only licences that allow modification (no ND).
 	params.set("license_type", commercial ? "commercial,modification" : "modification");
@@ -307,18 +349,29 @@ async function searchOpenverse({
 	const data = (await getJson(`https://api.openverse.org/v1/${kind}/?${params}`)) as {
 		results?: OpenverseResult[];
 	};
-	return (data.results ?? []).map((result) => ({
-		title: result.title ?? "untitled",
-		url: result.url,
-		...(result.thumbnail && kind === "images" ? { thumbnail: result.thumbnail } : {}),
-		type: kind === "audio" ? "audio" : "image",
-		license: `CC ${result.license.toUpperCase()} ${result.license_version ?? ""}`.trim(),
-		creator: result.creator,
-		attribution: result.attribution,
-		sourcePage: result.foreign_landing_url,
-		...(result.duration ? { durationSeconds: Math.round(result.duration / 100) / 10 } : {}),
-		...(result.width ? { width: result.width, height: result.height } : {}),
-	}));
+	return (data.results ?? []).map((result) => {
+		// StockSnap is served as a 960 px rendition; report that size so
+		// Claude doesn't pick it for a fullscreen shot expecting the original.
+		const served = /\/img-thumbs\/(\d+)w\//.exec(result.url);
+		const width = served && result.width ? Number(served[1]) : result.width;
+		const height =
+			served && result.width && result.height
+				? Math.round((result.height * Number(served[1])) / result.width)
+				: result.height;
+		return {
+			title: result.title ?? "untitled",
+			url: result.url,
+			...(result.thumbnail && kind === "images" ? { thumbnail: result.thumbnail } : {}),
+			...(result.source ? { source: result.source } : {}),
+			type: kind === "audio" ? "audio" : "image",
+			license: licenseName(result.license, result.license_version),
+			creator: result.creator,
+			attribution: result.attribution,
+			sourcePage: result.foreign_landing_url,
+			...(result.duration ? { durationSeconds: Math.round(result.duration / 100) / 10 } : {}),
+			...(width ? { width, height } : {}),
+		};
+	});
 }
 
 type CommonsPage = {
@@ -450,17 +503,24 @@ export async function searchFreeMedia({
 			return { results: await searchOpenverse({ query, kind: "audio", category: "sound_effect", limit: size, commercial }), note };
 		case "audio":
 			return { results: await searchOpenverse({ query, kind: "audio", limit: size, commercial }), note };
-		case "image":
-			return {
-				results: await fromSources(
+		case "image": {
+			// Professional stock photos first, then the big archives.
+			const [pro, rest] = await Promise.all([
+				searchOpenverse({ query, kind: "images", limit: size, commercial, sources: PRO_PHOTO_SOURCES }).catch(
+					() => [] as FreeMediaItem[],
+				),
+				fromSources(
 					[
 						searchCommons({ query, limit: size, kind: "image" }),
-						searchOpenverse({ query, kind: "images", limit: size, commercial }),
+						searchOpenverse({ query, kind: "images", limit: size, commercial, excludedSources: PRO_PHOTO_SOURCES }),
 					],
 					size,
-				),
-				note,
-			};
+				).catch(() => [] as FreeMediaItem[]),
+			]);
+			const results = [...pro.slice(0, Math.ceil(size * 0.6)), ...rest].slice(0, size);
+			if (results.length === 0) throw new Error("No pictures found (or the search services are unreachable).");
+			return { results, note };
+		}
 		case "video":
 			return { results: await searchCommons({ query, limit: size, kind: "video" }), note };
 		default:

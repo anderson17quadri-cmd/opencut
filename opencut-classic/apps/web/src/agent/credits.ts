@@ -72,6 +72,22 @@ export async function recordDownloadCredit({ url, path }: { url: string; path: s
 	await saveRegistry(registry);
 }
 
+/** Credits a clip rendered from something that isn't a downloaded file. */
+export async function recordRenderedCredit({
+	mediaId,
+	key,
+	credit,
+}: {
+	mediaId: string;
+	key: string;
+	credit: Credit;
+}) {
+	const registry = await loadRegistry();
+	registry.files[key] = credit;
+	registry.aliases[mediaId] = key;
+	await saveRegistry(registry);
+}
+
 /** Links a rendered picture clip to the downloaded picture it shows. */
 export async function recordAlias({ mediaId, sourceName }: { mediaId: string; sourceName: string }) {
 	const registry = await loadRegistry();
@@ -111,20 +127,24 @@ export async function writeCreditsFile({
 	if (sources.size === 0) return null;
 
 	const credits = [...sources].map((name) => registry.files[name]);
-	const short = credits
-		.map((credit) => [credit.creator, credit.license].filter(Boolean).join(", "))
-		.filter(Boolean);
+	// Only licences that require attribution go in the caption line.
+	const required = credits.filter((credit) => /\bBY\b/i.test(credit.license ?? "") || !credit.license);
+	const short = required.map((credit) =>
+		[credit.creator ?? credit.title, (credit.license ?? "").replace(/\s*\(.*\)\s*$/, "")].filter(Boolean).join(", "),
+	);
 	const text = [
 		`Créditos de "${parse(videoPath).base}"`,
 		"",
-		"Imagens e sons da internet usados neste vídeo:",
+		"Imagens, sons e animações da internet usados neste vídeo:",
 		"",
 		...credits.map((credit, i) => `${i + 1}. ${creditLine(credit)}`),
 		"",
-		"Para colar na legenda do post (opcional):",
-		short.length ? `Créditos: ${short.join(" · ")}` : "Créditos: imagens de acervos com licença livre.",
+		"Para colar na legenda do post:",
+		short.length
+			? `Créditos: ${short.join(" · ")}`
+			: "(nenhum crédito é obrigatório: todas as mídias usadas são livres de crédito)",
 		"",
-		"Licenças CC BY / CC BY-SA pedem o crédito ao autor; CC0 e domínio público não pedem.",
+		"Licenças CC BY / CC BY-SA pedem o crédito ao autor; CC0, domínio público e Lottie Simple License não pedem.",
 		"",
 	].join("\r\n");
 	const path = join(dirname(videoPath), `${parse(videoPath).name} - créditos.txt`);

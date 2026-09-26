@@ -23,6 +23,7 @@ import {
 import { ICON_ID_PATTERN, iconSvgUrl } from "./icons";
 import { type ImageAnimation, type ImageStyle, imagePlacementCode } from "./image-placement";
 import { ANCHORS } from "./layout";
+import { lottieCode, lottieSeconds } from "./lottie-placement";
 import { SOUND_EFFECTS, SOUND_LEAD, type SoundEffect, soundEffectFile, soundEffectFileName } from "./sound-effects";
 import { cutoutPerson } from "./vision";
 import {
@@ -277,7 +278,7 @@ async function cutoutPersonTool(args: Args) {
 			file: asset.file,
 			start: sourceStart,
 			end: sourceEnd,
-			quality: args.quality === "fast" || args.quality === "best" ? args.quality : "auto",
+			quality: args.quality === "fast" || args.quality === "best" || args.quality === "pro" ? args.quality : "auto",
 			onProgress: (fraction) => progress.update(fraction),
 		});
 		progress.done("Recorte pronto");
@@ -465,6 +466,58 @@ export async function addSoundEffect({
 	});
 }
 
+/** Plays a Lottie animation (JSON given by the server) over the video. */
+async function placeAnimation(args: Args) {
+	const project = requireOpenProject();
+	const animation = args.animation as { w?: number; h?: number; fr?: number; ip?: number; op?: number; layers?: unknown };
+	if (!animation || typeof animation !== "object" || !Array.isArray(animation.layers)) {
+		throw new Error("That file is not a Lottie animation.");
+	}
+	const canvas = project.settings.canvasSize;
+	const speed = Math.min(Math.max(optNum(args, "speed") ?? 1, 0.25), 4);
+	const loop = args.loop === true;
+	const once = lottieSeconds(animation) / speed;
+	const duration = Math.min(Math.max(optNum(args, "duration") ?? once, 0.3), 60);
+	const start = Math.max(0, optNum(args, "start") ?? toSeconds(editor().playback.getCurrentTime()));
+	const anchor = typeof args.anchor === "string" && (ANCHORS as readonly string[]).includes(args.anchor) ? args.anchor : "center";
+	const percent = (key: string) => {
+		const value = optNum(args, key);
+		return value === undefined ? null : Math.min(Math.max(value, 0), 100) / 100;
+	};
+	const name = (typeof args.name === "string" && args.name.trim()) || "Animação";
+	const result = await renderMotionGraphicClip({
+		spec: {
+			code: lottieCode({
+				anchor,
+				width: Math.min(Math.max(optNum(args, "widthPercent") ?? 40, 3), 100) / 100,
+				x: percent("x"),
+				y: percent("y"),
+				fullscreen: args.fullscreen === true,
+				loop: loop || duration > once + 0.05,
+				speed,
+				fade: Math.min(Math.max(optNum(args, "fade") ?? 0, 0), 2),
+			}),
+			mode: "2d",
+			width: canvas.width,
+			height: canvas.height,
+			fps: Math.min(Math.max(Math.round(frameRateToFloat(project.settings.fps)), 1), 60),
+			duration,
+			vendorScripts: ["lottie"],
+			data: { animation },
+		},
+		name: name.slice(0, 60),
+		start,
+		trackIndex: args.behindPerson === true ? undefined : 0,
+	});
+	const sound = await addSoundEffect({ effect: args.sound, at: start, volumeDb: optNum(args, "volumeDb") });
+	return {
+		...result,
+		...(sound ? { soundClipId: sound.clipId } : {}),
+		onePlaySeconds: Math.round(once * 100) / 100,
+		note: "Check it with view_frames. To change it, delete_clips this clip and add it again.",
+	};
+}
+
 export async function runGraphicsTool({
 	tool,
 	args,
@@ -481,6 +534,8 @@ export async function runGraphicsTool({
 			return cutoutPersonTool(args);
 		case "place_image":
 			return placeImage(args);
+		case "place_animation":
+			return placeAnimation(args);
 		default:
 			throw new Error(`Unknown tool: ${tool}`);
 	}

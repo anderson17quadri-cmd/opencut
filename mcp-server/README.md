@@ -21,7 +21,7 @@ The extension is a small stdio MCP server. Each tool is a POST to
 it to the open window (see `opencut-classic/apps/web/src/agent`). Nothing
 leaves the computer.
 
-Tools (55), roughly what a professional editor does:
+Tools (57), roughly what a professional editor does:
 
 - **Project**: `get_state`, `list_projects`, `create_project`, `open_project`,
   `set_project` (9:16 / 16:9 / 1:1 / 4:5…, fps, colour or blurred background).
@@ -50,7 +50,8 @@ Tools (55), roughly what a professional editor does:
   and is rendered to a transparent WebM on its own layer. Use it for
   titles, VS cards, explainers, 3D objects and end cards.
 - **AI cutout**: `cutout_person` separates the presenter from the
-  background (MediaPipe, on device) into an aligned top layer, so graphics
+  background on device — MODNet matting (hair-level edges) when the PC has
+  a GPU or with quality "pro", MediaPipe otherwise — into an aligned top layer, so graphics
   can sit behind them. `move_layer` reorders layers. `follow_hand` tracks a
   visible hand (MediaPipe Hand Landmarker) and keys another clip's position
   so it floats in the palm.
@@ -61,6 +62,10 @@ Tools (55), roughly what a professional editor does:
   the face framed, via on-device face detection), `add_sound_effect`
   (pop, whoosh, swoosh, click, impact, riser, ding — synthesized locally,
   no licence), `duck_music` (music dips automatically under speech).
+- **Designer animations**: `search_animations` + `add_animation` play
+  Lottie animations from LottieFiles' free catalogue (animated emojis and
+  icons, arrows, confetti, buttons, lower thirds, transitions) with
+  lottie-web, rendered to a transparent clip; no account needed.
 - **Pictures at spoken references**: `add_web_image` (download + import +
   show a picture as a pop-up card, plain picture or fullscreen cutaway,
   with optional sound) and `place_image` for pictures already imported.
@@ -68,8 +73,9 @@ Tools (55), roughly what a professional editor does:
   one pair or every cut), overlapping with spare footage when there is
   some, otherwise pulling later clips in.
 - **From the internet**: `search_free_media` (music and sound effects
-  from Openverse, images from Wikimedia Commons and Openverse with preview
-  pictures Claude can look at, video from Wikimedia Commons, with license
+  from Openverse, images from curated CC0 stock (StockSnap, WordPress
+  Photo Directory) first, then Wikimedia Commons and Openverse, with
+  preview pictures Claude can look at; only licences that allow editing, video from Wikimedia Commons, with license
   and attribution) and `download_media` (direct links to
   `Downloads\OpenCut`, imported into the project; only public http(s)
   hosts, media files up to 4 GB). Credits are never drawn on the video:

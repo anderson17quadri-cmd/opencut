@@ -169,7 +169,9 @@ async function explodeLayers(args: Args) {
 	// with the person removed (holes filled from around them), and just
 	// the person.
 	const cursor = new FrameCursor(asset.file, sourceTime(element, start), sourceTime(element, start + duration), 1280);
-	const masker = await PersonMasker.create(args.quality === "best" ? "best" : "fast");
+	const masker = await PersonMasker.create(
+		args.quality === "best" || args.quality === "pro" || args.quality === "fast" ? args.quality : "auto",
+	);
 	const orig = new OffscreenCanvas(width, height);
 	const person = new OffscreenCanvas(width, height);
 	const fill = new OffscreenCanvas(width, height);
@@ -211,7 +213,7 @@ async function explodeLayers(args: Args) {
 
 		const ms = Math.max(lastMs + 1, Math.round(cursor.timestamp * 1000));
 		lastMs = ms;
-		const mask = frame ? masker.mask(frame, ms) : null;
+		const mask = frame ? await masker.mask(frame, ms) : null;
 
 		// Person only.
 		pctx.clearRect(0, 0, width, height);
