@@ -72,8 +72,17 @@ function getDb() {
 		if (dir && dir !== "." && !existsSync(dir)) {
 			mkdirSync(dir, { recursive: true });
 		}
-		const sqlite = new Database(webEnv.DATABASE_URL);
-		sqlite.pragma("journal_mode = WAL");
+		// Several processes can open the file at once (the build collects
+		// page data in parallel workers): wait for locks instead of failing.
+		const sqlite = new Database(webEnv.DATABASE_URL, { timeout: 15_000 });
+		// Switching to WAL needs a moment with no other connection and
+		// fails at once otherwise; the mode is stored in the file, so it's
+		// enough that one opener manages it.
+		try {
+			sqlite.pragma("journal_mode = WAL");
+		} catch (error) {
+			if ((error as { code?: string }).code !== "SQLITE_BUSY") throw error;
+		}
 		sqlite.pragma("foreign_keys = ON");
 		sqlite.exec(BOOTSTRAP_SQL);
 		_db = drizzle(sqlite, { schema });
