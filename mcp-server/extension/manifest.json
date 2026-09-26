@@ -256,6 +256,14 @@
     {
       "name": "clean_voice",
       "description": "Limpar a voz (tirar ruído) com IA"
+    },
+    {
+      "name": "list_transition_effects",
+      "description": "Listar transições profissionais (gl-transitions)"
+    },
+    {
+      "name": "add_transition_effect",
+      "description": "Transição profissional entre cenas (glitch, zoom, cubo 3D…)"
     }
   ],
   "keywords": [

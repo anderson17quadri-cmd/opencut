@@ -51,7 +51,7 @@ function mediaAsset(element: TimelineElement) {
 }
 
 /** Source-media seconds for a timeline time inside a clip. */
-function sourceTime(element: TimelineElement, timelineSeconds: number) {
+export function sourceTime(element: TimelineElement, timelineSeconds: number) {
 	const rate = ("retime" in element ? element.retime?.rate : undefined) ?? 1;
 	return mediaTimeToSeconds({ time: element.trimStart }) + (timelineSeconds - toSeconds(element.startTime)) * rate;
 }
@@ -71,7 +71,7 @@ function cutoutsOf(element: TimelineElement) {
 }
 
 /** Steps through decoded frames, keeping a private copy of the current one. */
-class FrameCursor {
+export class FrameCursor {
 	private iterator: AsyncIterator<{ canvas: HTMLCanvasElement | OffscreenCanvas; timestamp: number; width: number; height: number }>;
 	private pending: IteratorResult<{ canvas: HTMLCanvasElement | OffscreenCanvas; timestamp: number; width: number; height: number }> | null = null;
 	copy: OffscreenCanvas | null = null;

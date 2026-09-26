@@ -59,6 +59,7 @@ import {
 } from "./helpers";
 import { renderMotionGraphicClip, runGraphicsTool } from "./graphics-tools";
 import { AUDIO_TOOLS, runAudioTool } from "./audio-tools";
+import { TRANSITION_TOOLS, runTransitionTool } from "./gl-transitions";
 import { HUMAN_TOOLS, runHumanTool } from "./human-tools";
 import { type KaraokeStyle, groupWords, karaokeCode } from "./karaoke";
 import { createHandLandmarker, videoFrames } from "./vision";
@@ -1878,6 +1879,7 @@ export async function runProTool({
 		default:
 			if (HUMAN_TOOLS.has(tool)) return runHumanTool({ tool, args });
 			if (AUDIO_TOOLS.has(tool)) return runAudioTool({ tool, args });
+			if (TRANSITION_TOOLS.has(tool)) return runTransitionTool({ tool, args });
 			return runGraphicsTool({ tool, args });
 	}
 }

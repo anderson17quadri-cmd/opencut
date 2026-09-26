@@ -1138,6 +1138,33 @@ server.registerTool(
 );
 
 server.registerTool(
+	"list_transition_effects",
+	{
+		title: "List shader transitions",
+		description:
+			"List the 123 shader transitions from gl-transitions (glitch, zoom blur, page curl, 3D cube, swirl, film burn, light leaks, pixelate, wipes…), with a featured set described by look, for add_transition_effect.",
+	},
+	() => callOpenCut("list_transition_effects"),
+);
+
+server.registerTool(
+	"add_transition_effect",
+	{
+		title: "Add a shader transition",
+		description:
+			"Put a designed transition over the cut between two back-to-back clips, e.g. CrossZoom (energetic zoom blur, the Reels classic), GlitchMemories (tech glitch), FilmBurn (warm light leak), cube (3D), InvertedPageCurl (page turn), Overexposure (white flash on a beat). It is rendered from both clips (using their spare footage when there is some) as a clip over the cut, with a whoosh on the cut. Unlike add_transition it doesn't move or overlap the clips. Use at scene/topic changes; 0.4-0.9 s.",
+		inputSchema: {
+			fromClipId: z.string().describe("The clip before the cut"),
+			toClipId: z.string().optional().describe("The clip after the cut (default: the one starting where fromClip ends)"),
+			type: z.string().optional().describe("Transition name from list_transition_effects (default CrossZoom)"),
+			duration: z.number().min(0.2).max(3).optional().describe("Seconds, default 0.7"),
+			sound: z.enum(["whoosh", "swoosh_down", "impact", "click", "pop", "none"]).optional().describe("Default whoosh"),
+		},
+	},
+	(args) => callOpenCut("add_transition_effect", args),
+);
+
+server.registerTool(
 	"clean_voice",
 	{
 		title: "Clean up the voice (remove noise)",

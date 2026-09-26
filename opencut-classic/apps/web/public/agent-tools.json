@@ -2590,6 +2590,66 @@
    }
   },
   {
+   "name": "list_transition_effects",
+   "title": "List shader transitions",
+   "description": "List the 123 shader transitions from gl-transitions (glitch, zoom blur, page curl, 3D cube, swirl, film burn, light leaks, pixelate, wipes…), with a featured set described by look, for add_transition_effect.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {}
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
+   "name": "add_transition_effect",
+   "title": "Add a shader transition",
+   "description": "Put a designed transition over the cut between two back-to-back clips, e.g. CrossZoom (energetic zoom blur, the Reels classic), GlitchMemories (tech glitch), FilmBurn (warm light leak), cube (3D), InvertedPageCurl (page turn), Overexposure (white flash on a beat). It is rendered from both clips (using their spare footage when there is some) as a clip over the cut, with a whoosh on the cut. Unlike add_transition it doesn't move or overlap the clips. Use at scene/topic changes; 0.4-0.9 s.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "fromClipId": {
+      "type": "string",
+      "description": "The clip before the cut"
+     },
+     "toClipId": {
+      "type": "string",
+      "description": "The clip after the cut (default: the one starting where fromClip ends)"
+     },
+     "type": {
+      "type": "string",
+      "description": "Transition name from list_transition_effects (default CrossZoom)"
+     },
+     "duration": {
+      "type": "number",
+      "minimum": 0.2,
+      "maximum": 3,
+      "description": "Seconds, default 0.7"
+     },
+     "sound": {
+      "type": "string",
+      "enum": [
+       "whoosh",
+       "swoosh_down",
+       "impact",
+       "click",
+       "pop",
+       "none"
+      ],
+      "description": "Default whoosh"
+     }
+    },
+    "required": [
+     "fromClipId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
    "name": "clean_voice",
    "title": "Clean up the voice (remove noise)",
    "description": "Remove background noise from speech on this computer with DeepFilterNet 3 (AI noise suppression): fans, air conditioning, traffic, hum, room echo, phone-mic hiss. Makes a cleaned copy of the clip's whole audio, puts it on an audio layer in exact sync (same timing, trim and speed) and mutes the original clip's sound. Use it on talking-head recordings before ducking music; not on music. strength: light (keeps some room tone), medium (default), strong (removes everything but the voice). First run downloads the model (~24 MB).",
