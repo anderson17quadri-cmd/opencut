@@ -13,6 +13,7 @@ import {
 	findElement,
 	importMediaFile,
 	requireOpenProject,
+	fromSeconds,
 	str,
 	toSeconds,
 } from "./helpers";
@@ -303,7 +304,90 @@ async function findBeats(args: Args) {
 	};
 }
 
-export const AUDIO_TOOLS = new Set(["clean_voice", "find_beats"]);
+const VITS_WEB = "https://cdn.jsdelivr.net/npm/@diffusionstudio/vits-web@1.0.3/+esm";
+type VitsModule = {
+	predict(
+		config: { text: string; voiceId: string },
+		callback?: (progress: { loaded: number; total: number }) => void,
+	): Promise<Blob>;
+};
+// Kept out of the bundler's sight: loaded at run time.
+const importFromUrl = new Function("url", "return import(url)") as (url: string) => Promise<VitsModule>;
+
+/** Brazilian Portuguese voices of Piper (rhasspy), run on this computer. */
+const VOICES = {
+	faber: { id: "pt_BR-faber-medium", note: "male, clear (medium quality)" },
+	edresson: { id: "pt_BR-edresson-low", note: "male, lighter model (low quality)" },
+} as const;
+
+export const VOICE_LICENSE =
+	"Piper (MIT) · voz pt_BR: dataset CC0/CC BY 4.0; modelo base de pesquisa (lessac/ryan) — confira antes de uso comercial";
+
+/**
+ * Narration from text with a Piper neural voice (via vits-web, MIT),
+ * generated on this computer and placed on an audio layer.
+ */
+async function generateVoiceover(args: Args) {
+	requireOpenProject();
+	const text = str(args, "text").trim();
+	if (!text) throw new Error('"text" is required');
+	if (text.length > 3000) throw new Error("Keep each narration under 3000 characters (split it into parts).");
+	const voiceKey = (args.voice === "edresson" ? "edresson" : "faber") as keyof typeof VOICES;
+	const start = Math.max(0, typeof args.start === "number" ? args.start : toSeconds(editor().playback.getCurrentTime()));
+
+	const progress = progressToast("Gerando a narração");
+	let wav: Blob;
+	try {
+		// Loaded on first use from jsDelivr (its phonemizer is a large
+		// emscripten module), like the MediaPipe vision tools.
+		const tts = await importFromUrl(VITS_WEB);
+		wav = await tts.predict({ text, voiceId: VOICES[voiceKey].id }, (p: { loaded: number; total: number }) => {
+			if (p.total > 0) progress.update(Math.min(0.99, p.loaded / p.total));
+		});
+		progress.done("Narração pronta");
+	} catch (error) {
+		progress.fail();
+		throw new Error(
+			`Could not generate the narration (internet needed the first time to download the voice): ${error instanceof Error ? error.message : error}`,
+		);
+	}
+
+	const name = `narração - ${text.slice(0, 40).replace(/[^\p{L}\p{N} ]/gu, "").trim() || "voz"}.wav`;
+	const media = await importMediaFile(new File([wav], name, { type: "audio/wav" }));
+	const asset = editor()
+		.media.getAssets()
+		.find((candidate) => candidate.id === media.mediaId);
+	if (!asset) throw new Error("The narration could not be imported.");
+	const volumeDb = typeof args.volumeDb === "number" ? args.volumeDb : 0;
+	const placed = await asOneStep(() => {
+		const base = buildElementFromMedia({
+			mediaId: asset.id,
+			mediaType: asset.type,
+			name: `Narração (${voiceKey})`,
+			duration: fromSeconds(asset.duration ?? 1),
+			startTime: fromSeconds(start),
+		});
+		const element = { ...base, params: { ...base.params, volume: volumeDb } } as typeof base;
+		const before = new Set(allTracks().flatMap((t) => t.elements.map((e) => e.id)));
+		new InsertElementCommand({ element, placement: { mode: "auto", trackType: "audio" } }).execute();
+		for (const t of allTracks()) {
+			const inserted = t.elements.find((e) => !before.has(e.id));
+			if (inserted) return { trackId: t.id, clipId: inserted.id };
+		}
+		throw new Error("The editor rejected the narration clip.");
+	});
+	return {
+		...placed,
+		mediaId: media.mediaId,
+		voice: voiceKey,
+		start: Math.round(start * 100) / 100,
+		durationSeconds: Math.round((asset.duration ?? 0) * 100) / 100,
+		license: VOICE_LICENSE,
+		note: "Transcribe it (transcribe words=true) to time captions and pictures to the narration.",
+	};
+}
+
+export const AUDIO_TOOLS = new Set(["clean_voice", "find_beats", "generate_voiceover"]);
 
 export async function runAudioTool({ tool, args }: { tool: string; args: Args }): Promise<unknown> {
 	switch (tool) {
@@ -311,6 +395,8 @@ export async function runAudioTool({ tool, args }: { tool: string; args: Args })
 			return cleanVoice(args);
 		case "find_beats":
 			return findBeats(args);
+		case "generate_voiceover":
+			return generateVoiceover(args);
 		default:
 			throw new Error(`Unknown tool: ${tool}`);
 	}

@@ -31,7 +31,7 @@ The extension is a small stdio MCP server. Each tool is a POST to
 it to the open window (see `opencut-classic/apps/web/src/agent`). Nothing
 leaves the computer.
 
-Tools (57), roughly what a professional editor does:
+Tools (63), roughly what a professional editor does:
 
 - **Project**: `get_state`, `list_projects`, `create_project`, `open_project`,
   `set_project` (9:16 / 16:9 / 1:1 / 4:5…, fps, colour or blurred background).
@@ -72,6 +72,13 @@ Tools (57), roughly what a professional editor does:
   the face framed, via on-device face detection), `add_sound_effect`
   (pop, whoosh, swoosh, click, impact, riser, ding — synthesized locally,
   no licence), `duck_music` (music dips automatically under speech).
+- **Open-source engines**: `clean_voice` (DeepFilterNet 3 noise
+  suppression, in sync, original muted), `find_beats` (tempo and beat
+  grid with web-audio-beat-detector), `add_transition_effect` /
+  `list_transition_effects` (123 gl-transitions shaders rendered over a
+  cut), `generate_voiceover` (Brazilian Portuguese Piper voices via
+  vits-web), `auto_reframe` (16:9 → 9:16 with a face-following virtual
+  camera).
 - **Designer animations**: `search_animations` + `add_animation` play
   Lottie animations from LottieFiles' free catalogue (animated emojis and
   icons, arrows, confetti, buttons, lower thirds, transitions) with

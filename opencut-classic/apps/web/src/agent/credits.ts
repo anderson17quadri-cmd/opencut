@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join, parse } from "node:path";
 import type { FreeMediaItem } from "./downloads";
 import { downloadsFolder } from "./local-files";
@@ -53,6 +53,8 @@ async function loadRegistry(): Promise<Registry> {
 }
 
 async function saveRegistry(registry: Registry) {
+	// The folder may not exist yet (nothing downloaded so far).
+	await mkdir(dirname(registryPath()), { recursive: true }).catch(() => {});
 	await writeFile(registryPath(), JSON.stringify(registry, null, 1), "utf8").catch(() => {});
 }
 

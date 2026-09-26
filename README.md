@@ -13,7 +13,14 @@ Each build of `.github/workflows/desktop-windows.yml` produces an artifact
 - `opencut.mcpb` — the Claude Desktop extension. Double-click it (or drag it
   into Claude Desktop → Settings → Extensions).
 
-Then, with OpenCut open, ask Claude to edit your videos.
+Then, with OpenCut open, ask Claude to edit your videos. **[GUIA.md](GUIA.md)**
+(Portuguese) explains every tool: what it does, when Claude uses it and an
+example request.
+
+From the build that includes the updater on, the installed app checks the
+latest signed GitHub release when it opens and offers to update itself; the
+Claude extension picks up new tools from the app, so it doesn't need to be
+reinstalled.
 
 ## Layout
 

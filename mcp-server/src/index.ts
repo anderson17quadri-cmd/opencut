@@ -42,13 +42,13 @@ Editing:
 
 Editing like a human editor (when the user asks for a professional/viral/"like that video" edit of a talking-head video, do all of this; for smaller asks, pick what fits):
 1. Understand it first: get_state, view_frames at 4-6 times, transcribe words=true. Read the whole script: find the hook, key points, lists, numbers, brand/product/place mentions, reveals, jokes and the call to action.
-2. Clean cut first (it shifts every time after it): remove_silences with tight pacing (minDuration 0.35-0.5, padding 0.08-0.12) and cut_range for false starts or repeated takes you spot in the transcript. Transcribe again afterwards.
-3. Format and framing: set_project 9:16 for Reels/TikTok/Shorts, fill the frame with the talking head, check with view_frames.
+2. Sound first: if the voice has background noise (fan, street, hum, echo), clean_voice on the talking-head clip. Clean cut next (it shifts every time after it): remove_silences with tight pacing (minDuration 0.35-0.5, padding 0.08-0.12) and cut_range for false starts or repeated takes you spot in the transcript. Transcribe again afterwards.
+3. Format and framing: set_project 9:16 for Reels/TikTok/Shorts, fill the frame with the talking head, check with view_frames. Horizontal (16:9) footage into a vertical video: auto_reframe (a virtual camera follows the face).
 4. Hook in the first 2 s: a bold animated title (create_motion_graphic) with an impact or whoosh, plus a punch-in on the first sentence.
-5. Keep it moving: something should change every 2-4 s. punch_zoom on emphasis words (style "cut", alternate ~1.12 and ~1.25, return to wide in between; "push" for slow build-ups), pictures at mentions (add_web_image), graphics for lists/numbers/comparisons, icons. Never more than two new things at once, and keep the face clear.
+5. Keep it moving (at topic/scene changes use add_transition_effect — CrossZoom, GlitchMemories, FilmBurn…; plain cuts elsewhere): something should change every 2-4 s. punch_zoom on emphasis words (style "cut", alternate ~1.12 and ~1.25, return to wide in between; "push" for slow build-ups), pictures at mentions (add_web_image), graphics for lists/numbers/comparisons, icons. Never more than two new things at once, and keep the face clear.
 6. Captions: generate_captions style "karaoke", 2-3 words per caption, in the lower third, clear of the face and graphics.
 7. One or two signature moments where the script allows (talking about layers, how something is made, a reveal): explode_layers (the scene turns into 3D glass layers with numbered labels), cutout_person + graphics behind the presenter, follow_hand for objects in the hand, 3D motion graphics (floating screens, objects that explode into parts), picture-in-picture next to an animated explainer.
-8. Sound design: every graphic entrance gets a sound (add_sound_effect or the sound option): pop for small pop-ups, whoosh for movement and transitions, impact for big titles/reveals, click for UI and list items, ding for checkmarks/prices/success, riser to build up to a reveal. Sounds around -8 dB. Music: search_free_media type "music" matching the mood, under the whole video, then duck_music so it dips while the person talks.
+8. Sound design: every graphic entrance gets a sound (add_sound_effect or the sound option): pop for small pop-ups, whoosh for movement and transitions, impact for big titles/reveals, click for UI and list items, ding for checkmarks/prices/success, riser to build up to a reveal. Sounds around -8 dB. Music: search_free_media type "music" matching the mood, under the whole video, then duck_music so it dips while the person talks. With music, find_beats and put cuts/transitions on bars and zooms, pop-ups and sounds on beats. No voice recorded (a narrated video, an intro/outro)? generate_voiceover makes Portuguese narration from text.
 9. Look: a light grade on the talking head (add_effect colour adjustment: a bit more contrast and saturation, slight vignette).
 10. End with a call-to-action graphic in the last 2-3 s (follow/save/comment) with a ding.
 11. Review like an editor: view_frames at every element you added and at a few random times; fix overlaps (captions vs graphics vs face), bad timing and anything cut off; then export_video. Tell the user, briefly, the edit decisions you made and where the file and credits are.
@@ -253,7 +253,7 @@ function previewsToImages(result: ToolResult): ToolResult {
 	};
 }
 
-const VERSION = "0.8.0";
+const VERSION = "0.9.0";
 
 const server = new McpServer(
 	{ name: "opencut", version: VERSION },
@@ -1165,6 +1165,20 @@ server.registerTool(
 );
 
 server.registerTool(
+	"auto_reframe",
+	{
+		title: "Reframe horizontal video for vertical",
+		description:
+			"Turn a horizontal (16:9) clip into a vertical (9:16) shot: scales it to fill the frame and pans a virtual camera to keep the speaker's face in view, moving only when the face drifts (no wobble), using on-device face detection. For repurposing YouTube/landscape footage into Reels/TikTok/Shorts. Set the project to 9:16 first; run it after cuts. It keys the clip's position, so punch_zoom afterwards would replace those keys.",
+		inputSchema: {
+			clipId: z.string(),
+			sampleEvery: z.number().min(0.1).max(2).optional().describe("Seconds between face checks (default 0.33)"),
+		},
+	},
+	(args) => callOpenCut("auto_reframe", args),
+);
+
+server.registerTool(
 	"find_beats",
 	{
 		title: "Find the music's beats",
@@ -1173,6 +1187,22 @@ server.registerTool(
 		inputSchema: { clipId: z.string().describe("The music clip") },
 	},
 	(args) => callOpenCut("find_beats", args),
+);
+
+server.registerTool(
+	"generate_voiceover",
+	{
+		title: "Generate a narration (AI voice)",
+		description:
+			"Turn text into Brazilian Portuguese speech with a Piper neural voice, generated on this computer (no account, no cost), and place it on an audio layer at start. Voices: faber (male, clearer — default) and edresson (male, lighter model). For narrated videos without the user's voice, intros/outros, or explaining a list. It sounds synthetic, so prefer the user's own voice when there is one. First use downloads the voice (~60 MB).",
+		inputSchema: {
+			text: z.string().min(1).max(3000).describe("What to say, in Portuguese; split long scripts into parts"),
+			voice: z.enum(["faber", "edresson"]).optional(),
+			start: z.number().min(0).optional().describe("Timeline seconds; default the playhead"),
+			volumeDb: z.number().min(-40).max(6).optional(),
+		},
+	},
+	(args) => callOpenCut("generate_voiceover", args),
 );
 
 server.registerTool(

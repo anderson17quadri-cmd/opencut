@@ -647,7 +647,120 @@ async function duckMusic(args: Args) {
 
 // ---------------------------------------------------------------- dispatch
 
-export const HUMAN_TOOLS = new Set(["explode_layers", "punch_zoom", "add_sound_effect", "duck_music"]);
+// --------------------------------------------------------- auto reframe
+
+/**
+ * Fits a (usually horizontal) clip to the frame height and pans it to keep
+ * the speaker's face in view — a 16:9 video turned into a 9:16 Reel with a
+ * virtual camera operator. Face positions are sampled, smoothed and only
+ * followed when the face drifts away from the centre, so the frame doesn't
+ * wobble.
+ */
+async function autoReframe(args: Args) {
+	const project = requireOpenProject();
+	const { track, element } = findElement(str(args, "clipId"));
+	if (element.type !== "video") throw new Error("auto_reframe works on video clips.");
+	const asset = mediaAsset(element);
+	if (!asset?.width || !asset.height) throw new Error("The clip's media is missing.");
+	const { width, height } = project.settings.canvasSize;
+
+	// Cover the frame: scale so the video is exactly as tall as the frame
+	// (or as wide, for a video narrower than the frame).
+	const cover = Math.max(width / asset.width, height / asset.height);
+	const shownWidth = asset.width * cover;
+	if (shownWidth <= width + 1) {
+		throw new Error("This clip already fits the frame width; there is nothing to pan.");
+	}
+	const fit = (() => {
+		// Scale 1 = the editor's default "contain" fit.
+		const contain = Math.min(width / asset.width, height / asset.height);
+		return cover / contain;
+	})();
+
+	const clipStart = toSeconds(element.startTime);
+	const clipSeconds = toSeconds(element.duration);
+	const every = Math.min(Math.max(optNum(args, "sampleEvery") ?? 0.33, 0.1), 2);
+	const finder = await createFaceFinder();
+	const samples: Array<{ time: number; x: number | null }> = [];
+	try {
+		for await (const frame of videoFrames({
+			file: asset.file,
+			start: sourceTime(element, clipStart),
+			end: sourceTime(element, clipStart + clipSeconds),
+			maxWidth: 640,
+		})) {
+			const timeline = clipStart + (frame.timestamp - sourceTime(element, clipStart)) / (("retime" in element ? element.retime?.rate : undefined) ?? 1);
+			if (samples.length && timeline - samples[samples.length - 1].time < every) continue;
+			samples.push({ time: timeline, x: finder.find(frame.canvas)?.x ?? null });
+		}
+	} finally {
+		finder.close();
+	}
+	const found = samples.filter((s) => s.x !== null).length;
+	if (found === 0) throw new Error("No face was found in this clip to follow.");
+
+	// Fill gaps with the last seen face, smooth over ~1 s, and only move the
+	// "camera" when the face leaves the middle 30% (like an operator would).
+	let last = samples.find((s) => s.x !== null)?.x ?? 0.5;
+	const filled = samples.map((s) => ({ time: s.time, x: (last = s.x ?? last) }));
+	const radius = Math.max(1, Math.round(1 / every / 2));
+	const smooth = filled.map((s, i) => {
+		const window = filled.slice(Math.max(0, i - radius), i + radius + 1);
+		return { time: s.time, x: window.reduce((sum, w) => sum + w.x, 0) / window.length };
+	});
+	const maxOffset = (shownWidth - width) / 2;
+	const deadZone = (width * 0.15) / shownWidth;
+	let aim = smooth[0].x;
+	const keys: Array<{ time: number; x: number }> = [];
+	for (const s of smooth) {
+		if (Math.abs(s.x - aim) > deadZone) aim = s.x + Math.sign(aim - s.x) * deadZone * 0.5;
+		// positionX that puts `aim` at the frame's centre, kept covering.
+		const x = Math.min(Math.max((0.5 - aim) * shownWidth, -maxOffset), maxOffset);
+		if (!keys.length || Math.abs(keys[keys.length - 1].x - x) > 2) keys.push({ time: s.time - clipStart, x });
+	}
+
+	await asOneStep(() => {
+		const update = <T extends { elements: TimelineElement[] }>(t: T): T => ({
+			...t,
+			elements: t.elements.map((e) => {
+				if (e.id !== element.id) return e;
+				const animations = { ...(e.animations ?? {}) };
+				for (const path of ["transform.positionX", "transform.positionY", "transform.scaleX", "transform.scaleY"]) {
+					delete animations[path as keyof typeof animations];
+				}
+				return {
+					...e,
+					animations: Object.keys(animations).length ? animations : undefined,
+					params: {
+						...e.params,
+						"transform.scaleX": fit,
+						"transform.scaleY": fit,
+						"transform.positionX": keys[0]?.x ?? 0,
+						"transform.positionY": 0,
+					},
+				} as TimelineElement;
+			}),
+		});
+		const now = sceneTracks();
+		editor().timeline.updateTracks({ overlay: now.overlay.map(update), main: update(now.main), audio: now.audio });
+		if (keys.length > 1) {
+			upsertKeyframes({
+				trackId: track.id,
+				elementId: element.id,
+				keys: keys.map((k) => ({ path: "transform.positionX", time: k.time, value: k.x, interpolation: "bezier" as const })),
+			});
+		}
+	});
+
+	return {
+		facesFoundIn: `${found}/${samples.length} samples`,
+		moves: Math.max(0, keys.length - 1),
+		scale: Math.round(fit * 1000) / 1000,
+		note: "The clip now fills the frame and pans to keep the face in view. Run it after cuts (it keys the whole clip); punch_zoom afterwards replaces these keys, so reframe first and zoom only where needed — or use punch_zoom alone.",
+	};
+}
+
+export const HUMAN_TOOLS = new Set(["explode_layers", "punch_zoom", "add_sound_effect", "duck_music", "auto_reframe"]);
 
 export async function runHumanTool({ tool, args }: { tool: string; args: Args }): Promise<unknown> {
 	switch (tool) {
@@ -659,6 +772,8 @@ export async function runHumanTool({ tool, args }: { tool: string; args: Args })
 			return addSoundEffectTool(args);
 		case "duck_music":
 			return duckMusic(args);
+		case "auto_reframe":
+			return autoReframe(args);
 		default:
 			throw new Error(`Unknown tool: ${tool}`);
 	}

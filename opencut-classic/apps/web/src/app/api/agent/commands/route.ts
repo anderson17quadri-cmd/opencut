@@ -40,6 +40,8 @@ const SLOW_TOOL_TIMEOUT_MS: Record<string, number> = {
 	place_animation: 10 * 60_000,
 	clean_voice: 30 * 60_000,
 	find_beats: 5 * 60_000,
+	generate_voiceover: 15 * 60_000,
+	auto_reframe: 15 * 60_000,
 	add_transition_effect: 10 * 60_000,
 	punch_zoom: 5 * 60_000,
 	duck_music: 10 * 60_000,
@@ -217,6 +219,22 @@ export async function POST(request: NextRequest) {
 		timeoutMs: SLOW_TOOL_TIMEOUT_MS[tool] ?? DEFAULT_TIMEOUT_MS,
 	});
 	if (reply.ok && tool === "place_image") await linkPlacedPicture(reply.result).catch(() => {});
+	if (reply.ok && tool === "generate_voiceover") {
+		const { mediaId, voice, license } = (reply.result ?? {}) as { mediaId?: string; voice?: string; license?: string };
+		if (mediaId) {
+			await recordRenderedCredit({
+				mediaId,
+				key: `Piper ${voice ?? "voz"}`,
+				credit: {
+					title: `Narração com voz de IA (Piper, voz pt_BR ${voice ?? ""})`.trim(),
+					creator: "Piper (rhasspy / OHF-Voice)",
+					license,
+					sourcePage: "https://huggingface.co/rhasspy/piper-voices",
+					url: "https://github.com/rhasspy/piper",
+				},
+			}).catch(() => {});
+		}
+	}
 	if (reply.ok && tool === "export_video") {
 		return NextResponse.json({ ...reply, result: await withCredits(reply.result) });
 	}

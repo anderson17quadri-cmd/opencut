@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "opencut",
   "display_name": "OpenCut",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Deixe o Claude editar seus vídeos no OpenCut, como um editor profissional.",
   "long_description": "Conecta o Claude ao editor de vídeo OpenCut aberto neste computador. O Claude importa seus vídeos, corta, remove silêncios, gera e estiliza legendas, coloca títulos, ícones, emojis e formas, anima, faz transições, baixa músicas, imagens e vídeos da internet, aplica efeitos de cor, chroma key e máscaras, muda o formato (Reels/TikTok/YouTube), vê o resultado quadro a quadro e exporta. Tudo aparece ao vivo na janela do OpenCut e dá para desfazer com Ctrl+Z. O OpenCut precisa estar aberto.",
   "author": {
@@ -268,6 +268,14 @@
     {
       "name": "find_beats",
       "description": "Achar a batida da música (cortar no ritmo)"
+    },
+    {
+      "name": "generate_voiceover",
+      "description": "Narração com voz de IA em português"
+    },
+    {
+      "name": "auto_reframe",
+      "description": "Vídeo horizontal vira vertical seguindo o rosto"
     }
   ],
   "keywords": [
