@@ -5,9 +5,10 @@ import { type NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-// MediaPipe models used by the AI cutout and hand tracking tools. Google
-// serves them without CORS, so the editor window can't fetch them itself;
-// this route downloads each one once and keeps it next to the app's data.
+// AI models used by the agent tools (MediaPipe cutout, face and hand
+// tracking; DeepFilterNet voice cleanup). Their hosts serve them without
+// CORS, so the editor window can't fetch them itself; this route downloads
+// each one once and keeps it next to the app's data.
 const MODELS: Record<string, string> = {
 	"selfie_segmenter.tflite":
 		"https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite",
@@ -15,6 +16,11 @@ const MODELS: Record<string, string> = {
 		"https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite",
 	"blaze_face_short_range.tflite":
 		"https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite",
+	// DeepFilterNet 3 (voice cleanup): the wasm engine matching the glue in
+	// agent/deepfilter-glue.ts, and the official DeepFilterNet3 ONNX model.
+	"df_bg.wasm": "https://cdn.mezon.ai/AI/models/datas/noise_suppression/deepfilternet3/v3/pkg/df_bg.wasm",
+	"DeepFilterNet3_onnx.tar.gz":
+		"https://cdn.mezon.ai/AI/models/datas/noise_suppression/deepfilternet3/v3/models/DeepFilterNet3_onnx.tar.gz",
 	"hand_landmarker.task":
 		"https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task",
 };

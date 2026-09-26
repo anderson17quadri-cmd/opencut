@@ -252,6 +252,10 @@
     {
       "name": "add_animation",
       "description": "Colocar animação de designer no vídeo"
+    },
+    {
+      "name": "clean_voice",
+      "description": "Limpar a voz (tirar ruído) com IA"
     }
   ],
   "keywords": [

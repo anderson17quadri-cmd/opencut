@@ -2590,6 +2590,36 @@
    }
   },
   {
+   "name": "clean_voice",
+   "title": "Clean up the voice (remove noise)",
+   "description": "Remove background noise from speech on this computer with DeepFilterNet 3 (AI noise suppression): fans, air conditioning, traffic, hum, room echo, phone-mic hiss. Makes a cleaned copy of the clip's whole audio, puts it on an audio layer in exact sync (same timing, trim and speed) and mutes the original clip's sound. Use it on talking-head recordings before ducking music; not on music. strength: light (keeps some room tone), medium (default), strong (removes everything but the voice). First run downloads the model (~24 MB).",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipId": {
+      "type": "string",
+      "description": "Video or audio clip with the speech"
+     },
+     "strength": {
+      "type": "string",
+      "enum": [
+       "light",
+       "medium",
+       "strong"
+      ]
+     }
+    },
+    "required": [
+     "clipId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
    "name": "check_task",
    "title": "Wait for a running task",
    "description": "Wait for a slow operation (export, transcription, captions, silence removal, download, motion graphic, cutout, 3D layers, frames) that answered \"still working\" with a taskId, and get its result.",

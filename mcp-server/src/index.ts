@@ -1138,6 +1138,20 @@ server.registerTool(
 );
 
 server.registerTool(
+	"clean_voice",
+	{
+		title: "Clean up the voice (remove noise)",
+		description:
+			"Remove background noise from speech on this computer with DeepFilterNet 3 (AI noise suppression): fans, air conditioning, traffic, hum, room echo, phone-mic hiss. Makes a cleaned copy of the clip's whole audio, puts it on an audio layer in exact sync (same timing, trim and speed) and mutes the original clip's sound. Use it on talking-head recordings before ducking music; not on music. strength: light (keeps some room tone), medium (default), strong (removes everything but the voice). First run downloads the model (~24 MB).",
+		inputSchema: {
+			clipId: z.string().describe("Video or audio clip with the speech"),
+			strength: z.enum(["light", "medium", "strong"]).optional(),
+		},
+	},
+	(args) => callOpenCut("clean_voice", args),
+);
+
+server.registerTool(
 	"check_task",
 	{
 		title: "Wait for a running task",
@@ -1217,8 +1231,21 @@ async function serve() {
 	const { Server } = await import("@modelcontextprotocol/sdk/server/index.js");
 	const { CallToolRequestSchema, ListToolsRequestSchema } = await import("@modelcontextprotocol/sdk/types.js");
 	const bundled = (await import("./generated/tools.json", { with: { type: "json" } })).default as unknown as ToolsFile;
+	// The app's definitions win (they match the app that will run them);
+	// tools only this extension knows are kept, so an older app never hides
+	// them (it answers "unknown tool" if it really can't run one).
+	const merge = (app: ToolsFile | null): ToolsFile => {
+		const base = bundled.tools?.length ? bundled : { ...bundled, tools: [] };
+		if (!app) return base;
+		const names = new Set(app.tools.map((tool) => tool.name));
+		return {
+			...app,
+			tools: [...app.tools, ...base.tools.filter((tool) => !names.has(tool.name))],
+			transforms: { ...base.transforms, ...app.transforms },
+		};
+	};
 	const fromApp = await fetchAppTools();
-	let current: ToolsFile = fromApp ?? (bundled.tools?.length ? bundled : { ...bundled, tools: [] });
+	let current: ToolsFile = merge(fromApp);
 
 	const runtime = new Server(
 		{ name: "opencut", version: current.version || VERSION },
@@ -1244,8 +1271,9 @@ async function serve() {
 			const found = await fetchAppTools();
 			if (!found) return;
 			clearInterval(timer);
-			if (JSON.stringify(found.tools) !== JSON.stringify(current.tools)) {
-				current = found;
+			const merged = merge(found);
+			if (JSON.stringify(merged.tools) !== JSON.stringify(current.tools)) {
+				current = merged;
 				await runtime.sendToolListChanged().catch(() => {});
 			}
 		}, 15_000);

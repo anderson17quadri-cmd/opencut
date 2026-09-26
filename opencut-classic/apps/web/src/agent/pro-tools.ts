@@ -58,6 +58,7 @@ import {
 	upsertKeyframes,
 } from "./helpers";
 import { renderMotionGraphicClip, runGraphicsTool } from "./graphics-tools";
+import { AUDIO_TOOLS, runAudioTool } from "./audio-tools";
 import { HUMAN_TOOLS, runHumanTool } from "./human-tools";
 import { type KaraokeStyle, groupWords, karaokeCode } from "./karaoke";
 import { createHandLandmarker, videoFrames } from "./vision";
@@ -1876,6 +1877,7 @@ export async function runProTool({
 			return followHand(args);
 		default:
 			if (HUMAN_TOOLS.has(tool)) return runHumanTool({ tool, args });
+			if (AUDIO_TOOLS.has(tool)) return runAudioTool({ tool, args });
 			return runGraphicsTool({ tool, args });
 	}
 }

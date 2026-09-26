@@ -38,6 +38,7 @@ const SLOW_TOOL_TIMEOUT_MS: Record<string, number> = {
 	place_image: 10 * 60_000,
 	explode_layers: 30 * 60_000,
 	place_animation: 10 * 60_000,
+	clean_voice: 30 * 60_000,
 	punch_zoom: 5 * 60_000,
 	duck_music: 10 * 60_000,
 };
