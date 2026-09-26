@@ -331,6 +331,26 @@ async function explodeLayers(args: Args) {
 		});
 	}
 
+	// The shot is built from the raw video: give it the clip's effects
+	// (colour grade etc.) so it matches the clip where it cuts in and out.
+	const effects = "effects" in element ? element.effects : undefined;
+	if (effects?.length) {
+		await asOneStep(() => {
+			const withEffects = <T extends { elements: TimelineElement[] }>(t: T): T => ({
+				...t,
+				elements: t.elements.map((e) =>
+					e.id === result.clipId ? ({ ...e, effects: structuredClone(effects) } as TimelineElement) : e,
+				),
+			});
+			const now = sceneTracks();
+			editor().timeline.updateTracks({
+				overlay: now.overlay.map(withEffects),
+				main: withEffects(now.main),
+				audio: now.audio,
+			});
+		});
+	}
+
 	const sounds: string[] = [];
 	if (args.sound !== false) {
 		const open = await addSoundEffect({ effect: "whoosh", at: start + SOUND_LEAD.whoosh, volumeDb: -4 });

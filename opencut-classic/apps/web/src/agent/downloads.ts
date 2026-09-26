@@ -300,7 +300,9 @@ async function searchOpenverse({
 	commercial: boolean;
 }): Promise<FreeMediaItem[]> {
 	const params = new URLSearchParams({ q: query, page_size: String(limit) });
-	if (commercial) params.set("license_type", "commercial");
+	// Everything goes into an edit (cut, synced, overlaid), which counts as
+	// an adaptation: only licences that allow modification (no ND).
+	params.set("license_type", commercial ? "commercial,modification" : "modification");
 	if (category) params.set("category", category);
 	const data = (await getJson(`https://api.openverse.org/v1/${kind}/?${params}`)) as {
 		results?: OpenverseResult[];
@@ -373,6 +375,8 @@ async function searchCommons({
 		.flatMap((page): FreeMediaItem[] => {
 			const info = page.imageinfo?.[0];
 			if (!info) return [];
+			// No "no derivatives" licences: an edit is an adaptation.
+			if (/\bND\b/i.test(stripHtml(info.extmetadata?.LicenseShortName?.value) ?? "")) return [];
 			// Only formats the editor can open (no TIFF, PDF, SVG…).
 			if (kind === "image" && !/^image\/(jpeg|png|webp|gif)$/.test(info.mime)) return [];
 			const meta = info.extmetadata ?? {};
@@ -438,7 +442,7 @@ export async function searchFreeMedia({
 }): Promise<{ results: FreeMediaItem[]; note: string }> {
 	const size = Math.min(Math.max(Math.round(limit), 1), 30);
 	const note =
-		"Free, openly licensed media. Check each license: CC BY needs credit (use `attribution`), NC means no commercial use, ND means no modifications. Download with download_media(url).";
+		"Free, openly licensed media that may be edited into a video (no ND licences). CC BY / BY-SA need credit: it is collected automatically into the credits file next to the export. NC (only with commercialUse false) means no commercial use. Download with download_media(url).";
 	switch (type) {
 		case "music":
 			return { results: await searchOpenverse({ query, kind: "audio", category: "music", limit: size, commercial }), note };

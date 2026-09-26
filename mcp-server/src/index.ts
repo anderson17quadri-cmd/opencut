@@ -53,7 +53,7 @@ Editing like a human editor (when the user asks for a professional/viral/"like t
 10. End with a call-to-action graphic in the last 2-3 s (follow/save/comment) with a ding.
 11. Review like an editor: view_frames at every element you added and at a few random times; fix overlaps (captions vs graphics vs face), bad timing and anything cut off; then export_video. Tell the user, briefly, the edit decisions you made and where the file and credits are.
 
-Order matters: timing edits (cuts, speed) → punch_zoom → cutout_person → graphics, pictures, hand-tracked objects → explode_layers (it bakes the frame as it looks then, so do it after the zooms under it) → captions → sounds and music (duck_music last, once the timing is final) → review → export.
+Order matters: timing edits (cuts, speed) → punch_zoom → colour grade → cutout_person → graphics, pictures, hand-tracked objects → explode_layers (it bakes the frame as it looks then, so do it after the zooms under it) → captions → sounds and music (duck_music last, once the timing is final) → review → export.
 
 Slow operations (export, transcription, captions, silence removal, downloads, motion graphics, cutouts, 3D layers, frame previews) may answer \"still working\" with a taskId: call check_task with it until you get the result.
 
@@ -839,7 +839,7 @@ server.registerTool(
 	{
 		title: "Search free media online",
 		description:
-			"Search openly licensed media to use in the video: music and sound effects (Openverse/Jamendo/Freesound), images (Wikimedia Commons + Openverse/Flickr) and video clips (Wikimedia Commons). Returns direct file URLs with license and attribution; then use download_media (or add_web_image for pictures). Image results come with numbered preview pictures so you can check what each one really shows before using it. Use English keywords. By default only licenses that allow commercial use.",
+			"Search openly licensed media to use in the video: music and sound effects (Openverse/Jamendo/Freesound), images (Wikimedia Commons + Openverse/Flickr) and video clips (Wikimedia Commons). Returns direct file URLs with license and attribution; then use download_media (or add_web_image for pictures). Image results come with numbered preview pictures so you can check what each one really shows before using it. Use English keywords. Only licences that allow editing (no ND); by default also commercial use.",
 		inputSchema: {
 			query: z.string().min(1),
 			type: z.enum(["music", "sound", "audio", "image", "video"]),
