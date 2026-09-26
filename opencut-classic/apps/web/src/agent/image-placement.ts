@@ -18,8 +18,6 @@ export interface ImagePlacement {
 	tilt: number;
 	label: string | null;
 	labelFont: string;
-	/** Small author/licence credit drawn on the picture (CC BY etc.). */
-	credit: string | null;
 	/** Slow zoom while on screen (Ken Burns). */
 	kenBurns: boolean;
 }
@@ -27,18 +25,6 @@ export interface ImagePlacement {
 export function imagePlacementCode(placement: ImagePlacement): string {
 	return `
 const P = ${JSON.stringify(placement)};
-function drawCredit(ctx, text, right, bottom, size) {
-	if (!text) return;
-	ctx.save();
-	ctx.font = "600 " + size + "px sans-serif";
-	ctx.textAlign = "right";
-	ctx.textBaseline = "bottom";
-	ctx.shadowColor = "rgba(0,0,0,0.9)";
-	ctx.shadowBlur = size * 0.5;
-	ctx.fillStyle = "rgba(255,255,255,0.9)";
-	ctx.fillText(text, right - size * 0.5, bottom - size * 0.35);
-	ctx.restore();
-}
 function render({ ctx, t, width, height, duration, images, tween, ease, clamp, roundRect }) {
 	const img = images.img;
 	if (!img) return;
@@ -58,7 +44,6 @@ function render({ ctx, t, width, height, duration, images, tween, ease, clamp, r
 		const w = img.width * cover * s, h = img.height * cover * s;
 		ctx.globalAlpha = P.animation === "slide" ? 1 : alpha;
 		ctx.drawImage(img, (width - w) / 2 + dx, (height - h) / 2, w, h);
-		drawCredit(ctx, P.credit, width + dx - width * 0.03, height * 0.97, Math.round(Math.min(width, height) * 0.02));
 		if (P.label) {
 			ctx.font = "800 " + labelSize + "px \\"" + P.labelFont + "\\", sans-serif";
 			ctx.textAlign = "center";
@@ -121,7 +106,6 @@ function render({ ctx, t, width, height, duration, images, tween, ease, clamp, r
 	roundRect(ctx, left + frame, top + frame, w, h, P.style === "card" ? Math.max(2, radius - frame) : radius * 0.6);
 	ctx.clip();
 	ctx.drawImage(img, left + frame, top + frame, w, h);
-	drawCredit(ctx, P.credit, left + frame + w, top + frame + h, Math.max(9, Math.round(Math.min(w, h) * 0.045)));
 	ctx.restore();
 	if (P.label) {
 		ctx.font = "800 " + labelSize + "px \\"" + P.labelFont + "\\", sans-serif";

@@ -326,9 +326,21 @@ async function exportVideo(args: Args) {
 	);
 	if (!response.ok) throw new Error("Rendered, but could not save the file.");
 	const { path } = (await response.json()) as { path: string };
+	// Media that ends up in the video, so the server can write the credits
+	// file for downloaded pictures and music next to it.
+	const assets = new Map(editor().media.getAssets().map((asset) => [asset.id, asset.name]));
+	const usedMedia = [
+		...new Set(
+			allTracks().flatMap((track) =>
+				track.elements.flatMap((element) =>
+					"mediaId" in element && typeof element.mediaId === "string" ? [element.mediaId] : [],
+				),
+			),
+		),
+	].map((id) => ({ id, name: assets.get(id) ?? "" }));
 	return usedFormat === format
-		? { path }
-		: { path, note: "MP4 encoding isn't available here, so it was saved as WebM." };
+		? { path, usedMedia }
+		: { path, usedMedia, note: "MP4 encoding isn't available here, so it was saved as WebM." };
 }
 
 export type { Navigate };

@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { dispatch } from "@/agent/broker";
 import { downloadMedia, searchFreeMedia, withPreviews } from "@/agent/downloads";
+import { recordAlias, recordDownloadCredit, rememberSearchResults, writeCreditsFile } from "@/agent/credits";
 import { defaultMediaFolders, listMediaFolder } from "@/agent/local-files";
 import { isFromLocalProcess } from "@/agent/request-guards";
 
@@ -32,6 +33,29 @@ const SLOW_TOOL_TIMEOUT_MS: Record<string, number> = {
 
 const str = (value: unknown) => (typeof value === "string" ? value : "");
 
+/** Remembers which downloaded picture a place_image clip shows (for credits). */
+async function linkPlacedPicture(result: unknown) {
+	const { mediaId, imageName } = (result ?? {}) as { mediaId?: string; imageName?: string };
+	if (mediaId && imageName) await recordAlias({ mediaId, sourceName: imageName });
+}
+
+/** Adds the credits file next to an exported video. */
+async function withCredits(result: unknown) {
+	const { usedMedia, ...rest } = (result ?? {}) as {
+		path?: string;
+		usedMedia?: Array<{ id: string; name: string }>;
+	};
+	if (!rest.path || !usedMedia) return rest;
+	const credits = await writeCreditsFile({ videoPath: rest.path, usedMedia }).catch(() => null);
+	return credits
+		? {
+				...rest,
+				creditsFile: credits.path,
+				creditsNote: `${credits.count} downloaded picture(s)/sound(s) are listed with author and licence in this text file (nothing is written on the video). Tell the user it exists so they can paste the credits into the post caption if they want.`,
+			}
+		: rest;
+}
+
 /** Tools that run in this server process rather than the editor window. */
 async function runServerTool(
 	tool: string,
@@ -52,6 +76,7 @@ async function runServerTool(
 				limit: typeof args.limit === "number" ? args.limit : undefined,
 				commercial: typeof args.commercialUse === "boolean" ? args.commercialUse : undefined,
 			});
+			rememberSearchResults(found.results);
 			// Pictures come with small previews so Claude can pick the right one.
 			if (str(args.type) === "image" && args.previews !== false) {
 				return { handled: true, result: { ...found, results: await withPreviews(found.results) } };
@@ -63,6 +88,7 @@ async function runServerTool(
 				url: str(args.url),
 				fileName: str(args.fileName) || undefined,
 			});
+			await recordDownloadCredit({ url: str(args.url), path: downloaded.path });
 			if (args.addToProject === false) return { handled: true, result: downloaded };
 			// Import it into the open project, like add_media with the new path.
 			const imported = await dispatch({
@@ -84,6 +110,7 @@ async function runServerTool(
 				url: str(args.url),
 				fileName: str(args.fileName) || undefined,
 			});
+			await recordDownloadCredit({ url: str(args.url), path: downloaded.path });
 			const imported = await dispatch({
 				tool: "add_media",
 				args: { path: downloaded.path },
@@ -99,6 +126,7 @@ async function runServerTool(
 				timeoutMs: SLOW_TOOL_TIMEOUT_MS.place_image,
 			});
 			if (!placed.ok) throw new Error(`Imported as media ${mediaId} but placing failed: ${placed.error}`);
+			await linkPlacedPicture(placed.result);
 			return { handled: true, result: { downloadedTo: downloaded.path, ...(placed.result as object) } };
 		}
 		default:
@@ -138,5 +166,9 @@ export async function POST(request: NextRequest) {
 		args,
 		timeoutMs: SLOW_TOOL_TIMEOUT_MS[tool] ?? DEFAULT_TIMEOUT_MS,
 	});
+	if (reply.ok && tool === "place_image") await linkPlacedPicture(reply.result).catch(() => {});
+	if (reply.ok && tool === "export_video") {
+		return NextResponse.json({ ...reply, result: await withCredits(reply.result) });
+	}
 	return NextResponse.json(reply);
 }

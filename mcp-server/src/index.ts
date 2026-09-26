@@ -37,8 +37,8 @@ Editing:
 - Format for Reels/TikTok/Shorts: set_project aspectRatio "9:16"; YouTube: "16:9"; Instagram feed: "4:5" or "1:1" (a format chosen this way is kept when footage of another shape is added). Then check framing with view_frames and adjust clip scale/position.
 - Music: add_media the audio file, add_to_timeline, set_volume (e.g. -18 dB under speech), animate fade_out at the end.
 - Transitions between shots: add_transition (crossfade, fade_black, slides, zoom), or all=true for every cut.
-- From the internet: when the user asks for music, sound effects, images or b-roll, search_free_media then download_media (it also imports the file). For a link the user gives, download_media directly. YouTube/Instagram/TikTok pages can't be downloaded. Mention the license/credit when it requires attribution.
-- Pictures for what is being said (automatic b-roll — "put images when I mention something"): 1) transcribe with words=true; 2) pick the concrete references worth illustrating (products, brands, places, people, objects, foods, numbers/events) — usually one every 3-8 s, not every noun; 3) for each, search_free_media type "image" with English keywords: it returns preview pictures, look at them and choose the one that really shows the thing (skip it if none fits); 4) add_web_image with that url, start = the time the word is spoken (≈0.1 s before), duration 2-4 s, style "card" (pop-up photo, anchor "top" on vertical videos so the face stays clear), "fullscreen" (cutaway covering the frame) or "plain"; alternate positions/styles for variety; sound "pop" (cards) or "whoosh" (fullscreen) gives the pro feel; when the licence asks for attribution (CC BY, CC BY-SA), pass credit like "Foto: <creator> / CC BY 2.0"; 5) view_frames at a few of those times to check (keep faces and burned-in captions clear). For a logo, prefer search_icons + add_icon. Tell the user which pictures you used and their licenses.
+- From the internet: when the user asks for music, sound effects, images or b-roll, search_free_media then download_media (it also imports the file). For a link the user gives, download_media directly. YouTube/Instagram/TikTok pages can't be downloaded. Credits are collected automatically into a text file next to the exported video.
+- Pictures for what is being said (automatic b-roll — "put images when I mention something"): 1) transcribe with words=true; 2) pick the concrete references worth illustrating (products, brands, places, people, objects, foods, numbers/events) — usually one every 3-8 s, not every noun; 3) for each, search_free_media type "image" with English keywords: it returns preview pictures, look at them and choose the one that really shows the thing (skip it if none fits); 4) add_web_image with that url, start = the time the word is spoken (≈0.1 s before), duration 2-4 s, style "card" (pop-up photo, anchor "top" on vertical videos so the face stays clear), "fullscreen" (cutaway covering the frame) or "plain"; alternate positions/styles for variety; sound "pop" (cards) or "whoosh" (fullscreen) gives the pro feel; 5) view_frames at a few of those times to check (keep faces and burned-in captions clear). For a logo, prefer search_icons + add_icon. Never write credits on the video: author and licence of everything downloaded are recorded automatically, and export_video writes a "<video> - créditos.txt" file next to the video (creditsFile) that the user can paste into the post caption if they want — tell them where it is.
 
 Slow operations (export, transcription, captions, silence removal, downloads) may answer \"still working\" with a taskId: call check_task with it until you get the result.
 
@@ -415,7 +415,7 @@ server.registerTool(
 	{
 		title: "Export video",
 		description:
-			"Render the timeline to a video file in the user's Videos\\OpenCut folder and return its path. Can take a while for long videos.",
+			"Render the timeline to a video file in the user's Videos\\OpenCut folder and return its path. If it uses pictures or sounds downloaded from the internet, a \"<video> - créditos.txt\" file with their authors and licences is saved next to it (creditsFile). Can take a while for long videos.",
 		inputSchema: {
 			name: z.string().optional().describe("File name without extension; defaults to the project name"),
 			format: z.enum(["mp4", "webm"]).optional().describe("Default mp4"),
@@ -860,7 +860,6 @@ const placementInputs = {
 	label: z.string().max(80).optional().describe("Short caption under the picture"),
 	font: z.string().optional().describe("Google Font for the label, default Montserrat"),
 	kenBurns: z.boolean().optional().describe("Slow zoom while on screen, default true"),
-	credit: z.string().max(90).optional().describe('Small credit on the picture, e.g. "Foto: Jane Doe / CC BY 2.0" (needed for CC BY licences)'),
 	sound: z.enum(["pop", "whoosh", "swoosh_down", "none"]).optional().describe("Sound effect when it appears (made on the spot, no licence needed); default none"),
 	behindPerson: z.boolean().optional().describe("Put it under a cutout_person layer (behind the presenter)"),
 };
