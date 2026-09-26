@@ -38,6 +38,7 @@ Editing:
 - Music: add_media the audio file, add_to_timeline, set_volume (e.g. -18 dB under speech), animate fade_out at the end.
 - Transitions between shots: add_transition (crossfade, fade_black, slides, zoom), or all=true for every cut.
 - From the internet: when the user asks for music, sound effects, images or b-roll, search_free_media then download_media (it also imports the file). For a link the user gives, download_media directly. YouTube/Instagram/TikTok pages can't be downloaded. Mention the license/credit when it requires attribution.
+- Pictures for what is being said (automatic b-roll — "put images when I mention something"): 1) transcribe with words=true; 2) pick the concrete references worth illustrating (products, brands, places, people, objects, foods, numbers/events) — usually one every 3-8 s, not every noun; 3) for each, search_free_media type "image" with English keywords: it returns preview pictures, look at them and choose the one that really shows the thing (skip it if none fits); 4) add_web_image with that url, start = the time the word is spoken (≈0.1 s before), duration 2-4 s, style "card" (pop-up photo, anchor "top" on vertical videos so the face stays clear), "fullscreen" (cutaway covering the frame) or "plain"; alternate positions/styles for variety; 5) view_frames at a few of those times to check. For a logo, prefer search_icons + add_icon. Tell the user which pictures you used and their licenses.
 
 Slow operations (export, transcription, captions, silence removal, downloads) may answer \"still working\" with a taskId: call check_task with it until you get the result.
 
@@ -200,8 +201,35 @@ async function callViewFrames(args: Record<string, unknown>, tool = "view_frames
 	return { content };
 }
 
+/** Image search results carry base64 previews; show them as pictures. */
+async function callSearchWithPreviews(args: Record<string, unknown>): Promise<ToolResult> {
+	const result = await callOpenCut("search_free_media", args);
+	const first = result.content[0];
+	if (result.isError || first?.type !== "text" || first.text.startsWith("OpenCut is still working")) {
+		return result;
+	}
+	let parsed: { results?: Array<Record<string, unknown>> } & Record<string, unknown>;
+	try {
+		parsed = JSON.parse(first.text);
+	} catch {
+		return result;
+	}
+	const images: ToolContent[] = [];
+	const results = (parsed.results ?? []).map((item, index) => {
+		const { preview, ...rest } = item as { preview?: { data: string; mimeType: string }; title?: unknown };
+		if (preview) {
+			images.push({ type: "text", text: `#${index + 1}: ${String(rest.title ?? "")}` });
+			images.push({ type: "image", data: preview.data, mimeType: preview.mimeType });
+		}
+		return { "#": index + 1, ...rest };
+	});
+	return {
+		content: [{ type: "text", text: JSON.stringify({ ...parsed, results }, null, 2) }, ...images],
+	};
+}
+
 const server = new McpServer(
-	{ name: "opencut", version: "0.5.0" },
+	{ name: "opencut", version: "0.6.0" },
 	{ instructions: INSTRUCTIONS },
 );
 
@@ -786,15 +814,16 @@ server.registerTool(
 	{
 		title: "Search free media online",
 		description:
-			"Search openly licensed media to use in the video: music and sound effects (Openverse/Jamendo/Freesound), images (Openverse/Flickr/Wikimedia) and video clips (Wikimedia Commons). Returns direct file URLs with license and attribution; then use download_media. Use English keywords. By default only licenses that allow commercial use.",
+			"Search openly licensed media to use in the video: music and sound effects (Openverse/Jamendo/Freesound), images (Wikimedia Commons + Openverse/Flickr) and video clips (Wikimedia Commons). Returns direct file URLs with license and attribution; then use download_media (or add_web_image for pictures). Image results come with numbered preview pictures so you can check what each one really shows before using it. Use English keywords. By default only licenses that allow commercial use.",
 		inputSchema: {
 			query: z.string().min(1),
 			type: z.enum(["music", "sound", "audio", "image", "video"]),
 			limit: z.number().int().min(1).max(30).optional(),
 			commercialUse: z.boolean().optional().describe("false to include non-commercial licenses too"),
+			previews: z.boolean().optional().describe("Images only; default true: include preview pictures"),
 		},
 	},
-	(args) => callOpenCut("search_free_media", args),
+	(args) => callSearchWithPreviews(args),
 );
 
 server.registerTool(
@@ -810,6 +839,57 @@ server.registerTool(
 		},
 	},
 	(args) => callOpenCut("download_media", args),
+);
+
+const placementInputs = {
+	start: z.number().min(0).optional().describe("Timeline seconds when it appears (e.g. when the word is spoken); default the playhead"),
+	duration: z.number().min(0.5).max(30).optional().describe("Seconds on screen, default 3"),
+	style: z
+		.enum(["card", "plain", "fullscreen"])
+		.optional()
+		.describe('"card" (default): photo with a white frame and shadow; "plain": just the picture with rounded corners; "fullscreen": covers the whole frame (cutaway)'),
+	animation: z.enum(["pop", "fade", "slide", "zoom", "none"]).optional().describe("Entrance/exit; default pop (fade for fullscreen)"),
+	anchor: z
+		.enum(["center", "top", "bottom", "left", "right", "top-left", "top-right", "bottom-left", "bottom-right"])
+		.optional()
+		.describe("Where on screen (card/plain); default center"),
+	widthPercent: z.number().min(5).max(100).optional().describe("Card/plain width, % of the frame width (default 70 vertical, 40 horizontal)"),
+	x: z.number().min(0).max(100).optional().describe("Centre x, % of frame (overrides anchor)"),
+	y: z.number().min(0).max(100).optional().describe("Centre y, % of frame (overrides anchor)"),
+	tilt: z.number().min(-30).max(30).optional().describe("Rotation in degrees, e.g. -4 for a playful card"),
+	label: z.string().max(80).optional().describe("Short caption under the picture"),
+	font: z.string().optional().describe("Google Font for the label, default Montserrat"),
+	kenBurns: z.boolean().optional().describe("Slow zoom while on screen, default true"),
+	behindPerson: z.boolean().optional().describe("Put it under a cutout_person layer (behind the presenter)"),
+};
+
+server.registerTool(
+	"add_web_image",
+	{
+		title: "Show a picture from the internet",
+		description:
+			"Download a picture from a direct image link (e.g. a search_free_media image url), import it and show it over the video at a given time with an animation — b-roll for something being mentioned. One call does download + import + placement.",
+		inputSchema: {
+			url: z.string().url(),
+			fileName: z.string().optional(),
+			...placementInputs,
+		},
+	},
+	(args) => callOpenCut("add_web_image", args),
+);
+
+server.registerTool(
+	"place_image",
+	{
+		title: "Show an imported picture",
+		description:
+			"Show an image already in the project (mediaId from get_state/add_media/download_media) over the video at a given time, as a pop-up photo card, a plain picture or a fullscreen cutaway, animated in and out. It becomes a clip on its own top layer.",
+		inputSchema: {
+			mediaId: z.string(),
+			...placementInputs,
+		},
+	},
+	(args) => callOpenCut("place_image", args),
 );
 
 const motionInputs = {

@@ -21,6 +21,8 @@ import {
 	toSeconds,
 } from "./helpers";
 import { ICON_ID_PATTERN, iconSvgUrl } from "./icons";
+import { type ImageAnimation, type ImageStyle, imagePlacementCode } from "./image-placement";
+import { ANCHORS } from "./layout";
 import { cutoutPerson } from "./vision";
 import {
 	type MotionGraphicSpec,
@@ -170,10 +172,13 @@ export async function renderMotionGraphicClip({
 	spec,
 	name,
 	start,
+	trackIndex,
 }: {
 	spec: MotionGraphicSpec;
 	name: string;
 	start: number;
+	/** Layer position; default: top, but under any person cutout. */
+	trackIndex?: number;
 }) {
 	const frameCount = Math.max(1, Math.round(spec.duration * spec.fps));
 	const progress = progressToast(`Claude está criando "${name}"`);
@@ -213,7 +218,10 @@ export async function renderMotionGraphicClip({
 	const clip = await asOneStep(() => {
 		// Its own layer on top, but under any person cutout, so a cutout
 		// keeps the presenter in front of it.
-		const addTrack = new AddTrackCommand({ type: "video", index: graphicsInsertIndex() });
+		const addTrack = new AddTrackCommand({
+			type: "video",
+			index: trackIndex ?? graphicsInsertIndex(),
+		});
 		addTrack.execute();
 		const trackId = addTrack.getTrackId();
 		const before = new Set(allTracks().flatMap((t) => t.elements.map((e) => e.id)));
@@ -320,6 +328,87 @@ async function cutoutPersonTool(args: Args) {
 	};
 }
 
+const IMAGE_STYLES: ImageStyle[] = ["card", "plain", "fullscreen"];
+const IMAGE_ANIMATIONS: ImageAnimation[] = ["pop", "fade", "slide", "zoom", "none"];
+const MAX_IMAGE_SIDE = 2400;
+
+/** Puts an imported picture over the video, animated in and out. */
+async function placeImage(args: Args) {
+	const project = requireOpenProject();
+	const mediaId = str(args, "mediaId");
+	const asset = editor()
+		.media.getAssets()
+		.find((candidate) => candidate.id === mediaId);
+	if (!asset) throw new Error(`No media ${mediaId}. Use list_media or download_media first.`);
+	if (asset.type !== "image") throw new Error("place_image needs an image (use add_to_timeline for video).");
+
+	const style = (IMAGE_STYLES.includes(args.style as ImageStyle) ? args.style : "card") as ImageStyle;
+	const animation = (
+		IMAGE_ANIMATIONS.includes(args.animation as ImageAnimation) ? args.animation : style === "fullscreen" ? "fade" : "pop"
+	) as ImageAnimation;
+	const anchor = typeof args.anchor === "string" && (ANCHORS as readonly string[]).includes(args.anchor) ? args.anchor : "center";
+	const canvas = project.settings.canvasSize;
+	const portrait = canvas.height > canvas.width;
+	const widthPercent = optNum(args, "widthPercent") ?? (portrait ? 70 : 40);
+	const percent = (key: string) => {
+		const value = optNum(args, key);
+		return value === undefined ? null : Math.min(Math.max(value, 0), 100) / 100;
+	};
+	const duration = Math.min(Math.max(optNum(args, "duration") ?? 3, 0.5), 30);
+	const start = Math.max(0, optNum(args, "start") ?? toSeconds(editor().playback.getCurrentTime()));
+	const label = typeof args.label === "string" && args.label.trim() ? args.label.trim().slice(0, 80) : null;
+	const labelFont = typeof args.font === "string" && /^[\w\s-]{1,60}$/.test(args.font) ? args.font : "Montserrat";
+
+	let bitmap = await createImageBitmap(asset.file);
+	const longest = Math.max(bitmap.width, bitmap.height);
+	if (longest > MAX_IMAGE_SIDE) {
+		const scale = MAX_IMAGE_SIDE / longest;
+		const resized = await createImageBitmap(bitmap, {
+			resizeWidth: Math.round(bitmap.width * scale),
+			resizeHeight: Math.round(bitmap.height * scale),
+			resizeQuality: "high",
+		});
+		bitmap.close();
+		bitmap = resized;
+	}
+
+	const spec: MotionGraphicSpec = {
+		code: imagePlacementCode({
+			style,
+			animation,
+			anchor,
+			width: Math.min(Math.max(widthPercent, 5), 100) / 100,
+			x: percent("x"),
+			y: percent("y"),
+			tilt: optNum(args, "tilt") ?? 0,
+			label,
+			labelFont,
+			kenBurns: args.kenBurns !== false,
+		}),
+		mode: "2d",
+		width: canvas.width,
+		height: canvas.height,
+		fps: Math.min(Math.max(Math.round(frameRateToFloat(project.settings.fps)), 1), 60),
+		duration,
+		fonts: label ? [labelFont] : [],
+		images: { img: bitmap },
+	};
+	const behindPerson = args.behindPerson === true;
+	const result = await renderMotionGraphicClip({
+		spec,
+		name: `Imagem: ${label ?? asset.name}`.slice(0, 80),
+		start,
+		trackIndex: behindPerson ? undefined : 0,
+	});
+	return {
+		...result,
+		imageMediaId: asset.id,
+		style,
+		animation,
+		note: "Check it with view_frames. To change it, delete_clips this clip and call place_image again.",
+	};
+}
+
 export async function runGraphicsTool({
 	tool,
 	args,
@@ -334,6 +423,8 @@ export async function runGraphicsTool({
 			return createMotionGraphic(args);
 		case "cutout_person":
 			return cutoutPersonTool(args);
+		case "place_image":
+			return placeImage(args);
 		default:
 			throw new Error(`Unknown tool: ${tool}`);
 	}

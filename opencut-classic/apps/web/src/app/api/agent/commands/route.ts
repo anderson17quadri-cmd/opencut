@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { dispatch } from "@/agent/broker";
-import { downloadMedia, searchFreeMedia } from "@/agent/downloads";
+import { downloadMedia, searchFreeMedia, withPreviews } from "@/agent/downloads";
 import { defaultMediaFolders, listMediaFolder } from "@/agent/local-files";
 import { isFromLocalProcess } from "@/agent/request-guards";
 
@@ -27,6 +27,7 @@ const SLOW_TOOL_TIMEOUT_MS: Record<string, number> = {
 	preview_motion_graphic: 5 * 60_000,
 	cutout_person: 60 * 60_000,
 	follow_hand: 30 * 60_000,
+	place_image: 10 * 60_000,
 };
 
 const str = (value: unknown) => (typeof value === "string" ? value : "");
@@ -44,16 +45,19 @@ async function runServerTool(
 					: defaultMediaFolders();
 			return { handled: true, result: await Promise.all(folders.map(listMediaFolder)) };
 		}
-		case "search_free_media":
-			return {
-				handled: true,
-				result: await searchFreeMedia({
-					query: str(args.query),
-					type: str(args.type),
-					limit: typeof args.limit === "number" ? args.limit : undefined,
-					commercial: typeof args.commercialUse === "boolean" ? args.commercialUse : undefined,
-				}),
-			};
+		case "search_free_media": {
+			const found = await searchFreeMedia({
+				query: str(args.query),
+				type: str(args.type),
+				limit: typeof args.limit === "number" ? args.limit : undefined,
+				commercial: typeof args.commercialUse === "boolean" ? args.commercialUse : undefined,
+			});
+			// Pictures come with small previews so Claude can pick the right one.
+			if (str(args.type) === "image" && args.previews !== false) {
+				return { handled: true, result: { ...found, results: await withPreviews(found.results) } };
+			}
+			return { handled: true, result: found };
+		}
 		case "download_media": {
 			const downloaded = await downloadMedia({
 				url: str(args.url),
@@ -72,6 +76,30 @@ async function runServerTool(
 					? { ...downloaded, media: imported.result }
 					: { ...downloaded, importError: imported.error },
 			};
+		}
+		case "add_web_image": {
+			// Download a picture from the web, import it, and place it over
+			// the video in one go.
+			const downloaded = await downloadMedia({
+				url: str(args.url),
+				fileName: str(args.fileName) || undefined,
+			});
+			const imported = await dispatch({
+				tool: "add_media",
+				args: { path: downloaded.path },
+				timeoutMs: DEFAULT_TIMEOUT_MS,
+			});
+			if (!imported.ok) throw new Error(`Downloaded to ${downloaded.path} but import failed: ${imported.error}`);
+			const mediaId = (imported.result as { mediaId?: string }).mediaId;
+			if (!mediaId) throw new Error("The downloaded file was not imported.");
+			const { url: _url, fileName: _fileName, ...placement } = args;
+			const placed = await dispatch({
+				tool: "place_image",
+				args: { ...placement, mediaId },
+				timeoutMs: SLOW_TOOL_TIMEOUT_MS.place_image,
+			});
+			if (!placed.ok) throw new Error(`Imported as media ${mediaId} but placing failed: ${placed.error}`);
+			return { handled: true, result: { downloadedTo: downloaded.path, ...(placed.result as object) } };
 		}
 		default:
 			return { handled: false };

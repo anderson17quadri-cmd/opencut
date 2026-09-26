@@ -119,6 +119,33 @@ async function fetchPublic(rawUrl: string, init: RequestInit = {}): Promise<Resp
 	throw new Error("Too many redirects.");
 }
 
+const MAX_PREVIEW_BYTES = 400_000;
+
+/** Small preview picture as base64, or null when it can't be fetched. */
+export async function fetchPreview(url: string): Promise<{ data: string; mimeType: string } | null> {
+	try {
+		const response = await fetchPublic(url, { signal: AbortSignal.timeout(12_000) });
+		const mimeType = (response.headers.get("content-type") ?? "").split(";")[0].trim();
+		if (!response.ok || !/^image\/(jpeg|png|webp|gif)$/.test(mimeType)) return null;
+		const buffer = Buffer.from(await response.arrayBuffer());
+		if (buffer.byteLength > MAX_PREVIEW_BYTES) return null;
+		return { data: buffer.toString("base64"), mimeType };
+	} catch {
+		return null;
+	}
+}
+
+/** Adds preview pictures to image results (for Claude to look at). */
+export async function withPreviews(items: FreeMediaItem[], max = 8) {
+	return Promise.all(
+		items.map(async (item, index) => {
+			if (index >= max || !item.thumbnail) return item;
+			const preview = await fetchPreview(item.thumbnail);
+			return preview ? { ...item, preview } : item;
+		}),
+	);
+}
+
 // -------------------------------------------------------------- download
 
 function fileNameFromResponse(response: Response, url: URL): string {
@@ -213,6 +240,8 @@ export async function downloadMedia({
 export interface FreeMediaItem {
 	title: string;
 	url: string;
+	/** Small preview image, when the source has one. */
+	thumbnail?: string;
 	type: "audio" | "image" | "video";
 	license: string;
 	creator?: string;
@@ -226,12 +255,19 @@ export interface FreeMediaItem {
 async function getJson(url: string): Promise<unknown> {
 	const response = await fetchPublic(url, { signal: AbortSignal.timeout(20_000) });
 	if (!response.ok) throw new Error(`Search failed (${response.status}).`);
-	return response.json();
+	const text = await response.text();
+	try {
+		return JSON.parse(text);
+	} catch {
+		// e.g. a rate-limit notice in plain text.
+		throw new Error(`Search service answered: ${text.slice(0, 120)}`);
+	}
 }
 
 type OpenverseResult = {
 	title?: string;
 	url: string;
+	thumbnail?: string;
 	license: string;
 	license_version?: string;
 	creator?: string;
@@ -264,6 +300,7 @@ async function searchOpenverse({
 	return (data.results ?? []).map((result) => ({
 		title: result.title ?? "untitled",
 		url: result.url,
+		...(result.thumbnail && kind === "images" ? { thumbnail: result.thumbnail } : {}),
 		type: kind === "audio" ? "audio" : "image",
 		license: `CC ${result.license.toUpperCase()} ${result.license_version ?? ""}`.trim(),
 		creator: result.creator,
@@ -276,8 +313,10 @@ async function searchOpenverse({
 
 type CommonsPage = {
 	title: string;
+	index?: number;
 	imageinfo?: Array<{
 		url: string;
+		thumburl?: string;
 		mime: string;
 		width?: number;
 		height?: number;
@@ -289,43 +328,69 @@ type CommonsPage = {
 
 const stripHtml = (value?: string) => value?.replace(/<[^>]*>/g, "").trim();
 
-async function searchCommonsVideos({
+async function searchCommons({
 	query,
 	limit,
+	kind,
 }: {
 	query: string;
 	limit: number;
+	kind: "video" | "image";
 }): Promise<FreeMediaItem[]> {
 	const params = new URLSearchParams({
 		action: "query",
 		format: "json",
 		generator: "search",
-		gsrsearch: `filetype:video ${query}`,
+		gsrsearch: `filetype:${kind === "video" ? "video" : "bitmap"} ${query}`,
 		gsrnamespace: "6",
 		gsrlimit: String(limit),
 		prop: "imageinfo",
 		iiprop: "url|size|mime|extmetadata",
+		iiurlwidth: "360",
 	});
 	const data = (await getJson(`https://commons.wikimedia.org/w/api.php?${params}`)) as {
 		query?: { pages?: Record<string, CommonsPage> };
 	};
-	return Object.values(data.query?.pages ?? {}).flatMap((page): FreeMediaItem[] => {
-		const info = page.imageinfo?.[0];
-		if (!info) return [];
-		const meta = info.extmetadata ?? {};
-		return [
-			{
-				title: page.title.replace(/^File:/, ""),
-				url: info.url.split("?")[0],
-				type: "video",
-				license: stripHtml(meta.LicenseShortName?.value) ?? "see source page",
-				creator: stripHtml(meta.Artist?.value),
-				sourcePage: info.descriptionurl,
-				...(info.duration ? { durationSeconds: Math.round(info.duration) } : {}),
-				...(info.width ? { width: info.width, height: info.height } : {}),
-			},
-		];
-	});
+	return Object.values(data.query?.pages ?? {})
+		.sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
+		.flatMap((page): FreeMediaItem[] => {
+			const info = page.imageinfo?.[0];
+			if (!info) return [];
+			// Only formats the editor can open (no TIFF, PDF, SVG…).
+			if (kind === "image" && !/^image\/(jpeg|png|webp|gif)$/.test(info.mime)) return [];
+			const meta = info.extmetadata ?? {};
+			return [
+				{
+					title: page.title.replace(/^File:/, "").replace(/\.[a-z0-9]+$/i, ""),
+					url: info.url.split("?")[0],
+					...(info.thumburl ? { thumbnail: info.thumburl } : {}),
+					type: kind,
+					license: stripHtml(meta.LicenseShortName?.value) ?? "see source page",
+					creator: stripHtml(meta.Artist?.value),
+					sourcePage: info.descriptionurl,
+					...(info.duration ? { durationSeconds: Math.round(info.duration) } : {}),
+					...(info.width ? { width: info.width, height: info.height } : {}),
+				},
+			];
+		});
+}
+
+/** Interleaves results from several sources; a failing source is skipped. */
+async function fromSources(
+	sources: Array<Promise<FreeMediaItem[]>>,
+	limit: number,
+): Promise<FreeMediaItem[]> {
+	const settled = await Promise.allSettled(sources);
+	const lists = settled.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
+	if (lists.length === 0) {
+		const reason = settled.find((result) => result.status === "rejected") as PromiseRejectedResult | undefined;
+		throw reason?.reason instanceof Error ? reason.reason : new Error("Search failed.");
+	}
+	const merged: FreeMediaItem[] = [];
+	for (let i = 0; merged.length < limit && lists.some((list) => i < list.length); i++) {
+		for (const list of lists) if (list[i] && merged.length < limit) merged.push(list[i]);
+	}
+	return merged;
 }
 
 export async function searchFreeMedia({
@@ -350,9 +415,18 @@ export async function searchFreeMedia({
 		case "audio":
 			return { results: await searchOpenverse({ query, kind: "audio", limit: size, commercial }), note };
 		case "image":
-			return { results: await searchOpenverse({ query, kind: "images", limit: size, commercial }), note };
+			return {
+				results: await fromSources(
+					[
+						searchCommons({ query, limit: size, kind: "image" }),
+						searchOpenverse({ query, kind: "images", limit: size, commercial }),
+					],
+					size,
+				),
+				note,
+			};
 		case "video":
-			return { results: await searchCommonsVideos({ query, limit: size }), note };
+			return { results: await searchCommons({ query, limit: size, kind: "video" }), note };
 		default:
 			throw new Error('"type" must be music, sound, audio, image or video');
 	}
