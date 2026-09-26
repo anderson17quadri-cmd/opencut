@@ -264,6 +264,10 @@
     {
       "name": "add_transition_effect",
       "description": "Transição profissional entre cenas (glitch, zoom, cubo 3D…)"
+    },
+    {
+      "name": "find_beats",
+      "description": "Achar a batida da música (cortar no ritmo)"
     }
   ],
   "keywords": [

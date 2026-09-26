@@ -2650,6 +2650,28 @@
    }
   },
   {
+   "name": "find_beats",
+   "title": "Find the music's beats",
+   "description": "Detect the tempo (BPM) and beat grid of a music clip (web-audio-beat-detector) and return every beat and bar (every 4th beat) as timeline seconds. Use them to edit on the beat like a Reels editor: cuts and transitions on bars, punch_zoom and pictures/animations/text popping on beats, sounds landing on beats.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "clipId": {
+      "type": "string",
+      "description": "The music clip"
+     }
+    },
+    "required": [
+     "clipId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+   },
+   "execution": {
+    "taskSupport": "forbidden"
+   }
+  },
+  {
    "name": "clean_voice",
    "title": "Clean up the voice (remove noise)",
    "description": "Remove background noise from speech on this computer with DeepFilterNet 3 (AI noise suppression): fans, air conditioning, traffic, hum, room echo, phone-mic hiss. Makes a cleaned copy of the clip's whole audio, puts it on an audio layer in exact sync (same timing, trim and speed) and mutes the original clip's sound. Use it on talking-head recordings before ducking music; not on music. strength: light (keeps some room tone), medium (default), strong (removes everything but the voice). First run downloads the model (~24 MB).",

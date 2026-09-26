@@ -1165,6 +1165,17 @@ server.registerTool(
 );
 
 server.registerTool(
+	"find_beats",
+	{
+		title: "Find the music's beats",
+		description:
+			"Detect the tempo (BPM) and beat grid of a music clip (web-audio-beat-detector) and return every beat and bar (every 4th beat) as timeline seconds. Use them to edit on the beat like a Reels editor: cuts and transitions on bars, punch_zoom and pictures/animations/text popping on beats, sounds landing on beats.",
+		inputSchema: { clipId: z.string().describe("The music clip") },
+	},
+	(args) => callOpenCut("find_beats", args),
+);
+
+server.registerTool(
 	"clean_voice",
 	{
 		title: "Clean up the voice (remove noise)",

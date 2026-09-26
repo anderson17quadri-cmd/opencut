@@ -1,9 +1,21 @@
+import { analyze, guess } from "web-audio-beat-detector";
 import { InsertElementCommand } from "@/commands";
 import type { SceneTracks, TimelineElement } from "@/timeline";
 import { buildElementFromMedia } from "@/timeline/element-utils";
 import { DEEPFILTER_GLUE } from "./deepfilter-glue";
 import { progressToast } from "./graphics-tools";
-import { type Args, allTracks, asOneStep, editor, findElement, importMediaFile, requireOpenProject, str } from "./helpers";
+import { mediaTimeToSeconds } from "@/wasm";
+import {
+	type Args,
+	allTracks,
+	asOneStep,
+	editor,
+	findElement,
+	importMediaFile,
+	requireOpenProject,
+	str,
+	toSeconds,
+} from "./helpers";
 
 // Audio tools built on open-source engines: voice cleanup with DeepFilterNet 3.
 
@@ -236,12 +248,69 @@ async function cleanVoice(args: Args) {
 	};
 }
 
-export const AUDIO_TOOLS = new Set(["clean_voice"]);
+/**
+ * Finds the music's tempo and beat grid (web-audio-beat-detector) and
+ * returns the beat times on the timeline, for cutting and animating on
+ * the beat.
+ */
+async function findBeats(args: Args) {
+	requireOpenProject();
+	const { element } = findElement(str(args, "clipId"));
+	if (element.type !== "audio" && element.type !== "video") throw new Error("find_beats works on music (audio or video clips).");
+	if (!("mediaId" in element)) throw new Error("That clip has no media.");
+	const asset = editor()
+		.media.getAssets()
+		.find((candidate) => candidate.id === element.mediaId);
+	if (!asset) throw new Error("The clip's media is missing.");
+
+	let buffer: AudioBuffer;
+	try {
+		buffer = await new OfflineAudioContext(1, 1, 44_100).decodeAudioData(await asset.file.arrayBuffer());
+	} catch {
+		throw new Error("This clip's audio couldn't be decoded.");
+	}
+	const rate = ("retime" in element ? element.retime?.rate : undefined) ?? 1;
+	const clipStart = toSeconds(element.startTime);
+	const clipSeconds = toSeconds(element.duration);
+	const sourceStart = mediaTimeToSeconds({ time: element.trimStart });
+	// Tempo from up to 60 s of what the clip plays.
+	const analyzed = Math.max(3, Math.min(60, clipSeconds * rate, buffer.duration - sourceStart));
+	let result: { bpm: number; offset: number; tempo: number };
+	try {
+		// guess() gives the grid's phase (offset) with a rounded BPM;
+		// analyze() gives the precise tempo for a grid that doesn't drift.
+		const [grid, tempo] = await Promise.all([guess(buffer, sourceStart, analyzed), analyze(buffer, sourceStart, analyzed)]);
+		result = { ...grid, tempo: Math.abs(tempo - grid.bpm) < 2 ? tempo : grid.bpm };
+	} catch {
+		throw new Error("No steady beat was found in that part of the clip.");
+	}
+	const period = 60 / result.tempo;
+	// Beat grid in source time, anchored at the first detected beat.
+	let beat = sourceStart + result.offset;
+	while (beat - period >= sourceStart) beat -= period;
+	const beats: number[] = [];
+	for (; beat < sourceStart + clipSeconds * rate && beats.length < 1000; beat += period) {
+		const timeline = clipStart + (beat - sourceStart) / rate;
+		if (timeline >= clipStart && timeline <= clipStart + clipSeconds) beats.push(Math.round(timeline * 1000) / 1000);
+	}
+	return {
+		bpm: Math.round(result.tempo * 10) / 10,
+		beatSeconds: Math.round((period / rate) * 1000) / 1000,
+		beats,
+		// Every 4th beat, assuming the first detected beat starts a bar.
+		bars: beats.filter((_, i) => i % 4 === 0),
+		note: "Timeline seconds. Cut, punch_zoom, show pictures/animations and add sounds on beats (strongest on bars); a cut every 1-2 bars feels musical.",
+	};
+}
+
+export const AUDIO_TOOLS = new Set(["clean_voice", "find_beats"]);
 
 export async function runAudioTool({ tool, args }: { tool: string; args: Args }): Promise<unknown> {
 	switch (tool) {
 		case "clean_voice":
 			return cleanVoice(args);
+		case "find_beats":
+			return findBeats(args);
 		default:
 			throw new Error(`Unknown tool: ${tool}`);
 	}
