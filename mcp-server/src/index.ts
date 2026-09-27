@@ -52,7 +52,7 @@ Editing like a human editor (when the user asks for a professional/viral/"like t
 6. Captions: generate_captions with a preset — "hormozi" (viral talking-head look) or "box" (CapCut look) or "karaoke" — in the lower third, clear of the face and graphics.
 7. One or two signature moments where the script allows (talking about layers, how something is made, a reveal): explode_layers (the scene turns into 3D glass layers with numbered labels), cutout_person + graphics behind the presenter, follow_hand for objects in the hand, 3D motion graphics (floating screens, objects that explode into parts), picture-in-picture next to an animated explainer.
 8. Sound design: every graphic entrance gets a sound (add_sound_effect or the sound option): pop for small pop-ups, whoosh for movement and transitions, impact for big reveals, punch for text slamming in, click/mouse_click for UI and list items, ding/success for checkmarks/prices, notification for message pop-ups, error for a wrong answer, glitch for glitch moments, riser to build up to a reveal. Sounds around -8 dB. Music: search_free_media type "music" matching the mood, under the whole video, then duck_music so it dips while the person talks. With music, find_beats and put cuts/transitions on bars and zooms, pop-ups and sounds on beats. No voice recorded (a narrated video, an intro/outro)? generate_voiceover makes Portuguese narration from text.
-9. Look: apply_look on the footage ("cinema" for most videos, "noturno" for bright/white rooms, "limpo" for a bright YouTube look).
+9. Look: apply_look on the footage, chosen from what the frames show: "cinema" for most talking heads, "noturno" only for tripod talking heads against a bright/white wall, "filme"/"limpo" for vlogs, daylight, food and people (strength 60-90). Never scale selfie/vlog footage up (it blurs); set_project fps 30 for Reels.
 10. End with a call-to-action graphic in the last 2-3 s (follow/save/comment) with a ding.
 11. Loudness: master_audio (-14 LUFS, the social-media standard) once all sound is final.
 12. Review like an editor: view_frames at every element you added and at a few random times; fix overlaps (captions vs graphics vs face), bad timing and anything cut off; then export_video. Tell the user, briefly, the edit decisions you made and where the file and credits are.
@@ -257,7 +257,7 @@ function previewsToImages(result: ToolResult): ToolResult {
 	};
 }
 
-const VERSION = "0.11.0";
+const VERSION = "0.11.1";
 
 const server = new McpServer(
 	{ name: "opencut", version: VERSION },
@@ -454,7 +454,7 @@ server.registerTool(
 		inputSchema: {
 			name: z.string().optional().describe("File name without extension; defaults to the project name"),
 			format: z.enum(["mp4", "webm"]).optional().describe("Default mp4"),
-			quality: z.enum(["low", "medium", "high", "very_high"]).optional().describe("Default high"),
+			quality: z.enum(["low", "medium", "high", "very_high"]).optional().describe("Default very_high (social networks re-compress uploads)"),
 		},
 	},
 	(args) => callOpenCut("export_video", args),
@@ -1402,9 +1402,12 @@ server.registerTool(
 		description:
 			'Grade the footage like a colourist with a 3D LUT on the GPU, plus a matching vignette. Built-in looks: "noturno" (dark and elegant; bright/white rooms turn moody, face stands out), "cinema" (teal & orange film contrast), "filme" (warm, soft, lifted blacks), "limpo" (bright and clean), "neon" (purple shadows, cyan highlights), "pb" (film black & white). Or lutPath: any .cube LUT file on the user\'s computer. Applies to the footage clips (main track and their cutouts), not titles or graphics; calling it again replaces the look.',
 		inputSchema: {
-			look: z.enum(["noturno", "cinema", "filme", "limpo", "neon", "pb"]).optional().describe('Default "noturno"'),
+			look: z
+				.enum(["noturno", "cinema", "filme", "limpo", "neon", "pb"])
+				.optional()
+				.describe('Default "cinema". Match the footage: "noturno" only for tripod talking heads against a bright/white wall; vlogs, daylight, food and people: "filme" or "limpo" (noturno turns daylight grey)'),
 			lutPath: z.string().optional().describe("Full path of a .cube LUT file instead of a built-in look"),
-			strength: z.number().min(0).max(100).optional().describe("Default 100"),
+			strength: z.number().min(0).max(100).optional().describe("Default 100; 60-90 usually looks more natural"),
 			vignette: z.number().min(0).max(100).optional().describe("Default 35 (15 for limpo); 0 for none"),
 			clipIds: z.array(z.string()).optional().describe("Only these clips (default: the footage)"),
 		},

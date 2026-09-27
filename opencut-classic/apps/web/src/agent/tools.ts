@@ -297,9 +297,10 @@ async function exportVideo(args: Args) {
 	const quality: ExportQuality =
 		args.quality === "low" ||
 		args.quality === "medium" ||
-		args.quality === "very_high"
+		args.quality === "high"
 			? args.quality
-			: "high";
+			: // Social networks re-compress uploads: send them the best copy.
+				"very_high";
 
 	const render = (format: ExportFormat) =>
 		editor().project.export({

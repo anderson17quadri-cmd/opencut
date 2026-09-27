@@ -1096,7 +1096,7 @@ async function applyLook(args: Args) {
 	requireOpenProject();
 	ensureEffects();
 	const lutText = opt(args, "lutText", isString);
-	const look = lutText ? "custom" : (opt(args, "look", isString) ?? "noturno");
+	const look = lutText ? "custom" : (opt(args, "look", isString) ?? "cinema");
 	if (look !== "custom" && !LOOKS[look]) {
 		throw new Error(`Unknown look "${look}". Looks: ${Object.keys(LOOKS).join(", ")} (or lutPath for a .cube file).`);
 	}
