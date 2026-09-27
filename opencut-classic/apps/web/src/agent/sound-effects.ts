@@ -1,10 +1,28 @@
-// Short sound effects synthesized on the spot (no download, no licence):
-// the "pop" and "whoosh" that editors put under pictures and titles
-// appearing on screen.
+// Short sound effects that editors put under pictures and titles appearing
+// on screen. The first seven are synthesized on the spot; the others are
+// recordings from Kenney's CC0 sound packs (public domain, in
+// public/vendor/sfx).
 
-export type SoundEffect = "pop" | "whoosh" | "swoosh_down" | "click" | "impact" | "riser" | "ding";
+type SynthEffect = "pop" | "whoosh" | "swoosh_down" | "click" | "impact" | "riser" | "ding";
+type RecordedEffect = "punch" | "mouse_click" | "success" | "notification" | "error" | "glitch" | "ui_open" | "ui_close";
+export type SoundEffect = SynthEffect | RecordedEffect;
 
-export const SOUND_EFFECTS: SoundEffect[] = ["pop", "whoosh", "swoosh_down", "click", "impact", "riser", "ding"];
+/** Recorded effects: the files played one after another (glitch is a stutter of four). */
+const RECORDED: Record<RecordedEffect, string[]> = {
+	punch: ["impactPunch_heavy_000"],
+	mouse_click: ["mouseclick1"],
+	success: ["confirmation_001"],
+	notification: ["question_001"],
+	error: ["error_006"],
+	glitch: ["glitch_001", "glitch_003", "glitch_002", "glitch_004"],
+	ui_open: ["maximize_006"],
+	ui_close: ["minimize_006"],
+};
+
+export const SOUND_EFFECTS: SoundEffect[] = [
+	"pop", "whoosh", "swoosh_down", "click", "impact", "riser", "ding",
+	"punch", "mouse_click", "success", "notification", "error", "glitch", "ui_open", "ui_close",
+];
 
 const SAMPLE_RATE = 48_000;
 
@@ -18,9 +36,17 @@ export const SOUND_LEAD: Record<SoundEffect, number> = {
 	// A riser builds up and ends right on the moment.
 	riser: 1.5,
 	ding: 0,
+	punch: 0.02,
+	mouse_click: 0.015,
+	success: 0,
+	notification: 0,
+	error: 0,
+	glitch: 0.02,
+	ui_open: 0.05,
+	ui_close: 0,
 };
 
-const LENGTH: Record<SoundEffect, number> = {
+const LENGTH: Record<SynthEffect, number> = {
 	pop: 0.25,
 	whoosh: 0.7,
 	swoosh_down: 0.7,
@@ -42,7 +68,7 @@ function noiseBuffer(ctx: OfflineAudioContext, seconds: number) {
 	return buffer;
 }
 
-async function render(effect: SoundEffect): Promise<AudioBuffer> {
+async function render(effect: SynthEffect): Promise<AudioBuffer> {
 	const seconds = LENGTH[effect];
 	const ctx = new OfflineAudioContext(2, Math.ceil(seconds * SAMPLE_RATE), SAMPLE_RATE);
 	const out = ctx.createGain();
@@ -219,7 +245,41 @@ export function soundEffectFileName(effect: SoundEffect) {
 	return `efeito ${effect}.wav`;
 }
 
+/** Joins the recorded pieces (short gaps between glitch bursts), peak at -1 dBFS. */
+async function recorded(effect: RecordedEffect): Promise<AudioBuffer> {
+	const decoder = new OfflineAudioContext(2, 1, SAMPLE_RATE);
+	const pieces = await Promise.all(
+		RECORDED[effect].map(async (name) => {
+			const response = await fetch(`/vendor/sfx/${name}.ogg`);
+			if (!response.ok) throw new Error(`Sound effect ${effect} is missing.`);
+			return decoder.decodeAudioData(await response.arrayBuffer());
+		}),
+	);
+	const gap = effect === "glitch" ? Math.round(SAMPLE_RATE * 0.045) : 0;
+	const length = pieces.reduce((sum, piece) => sum + piece.length + gap, 0);
+	const out = new OfflineAudioContext(2, Math.max(1, length), SAMPLE_RATE).createBuffer(2, Math.max(1, length), SAMPLE_RATE);
+	let offset = 0;
+	let peak = 0;
+	for (const piece of pieces) {
+		for (let c = 0; c < 2; c++) {
+			const from = piece.getChannelData(Math.min(c, piece.numberOfChannels - 1));
+			const to = out.getChannelData(c);
+			for (let i = 0; i < from.length; i++) {
+				to[offset + i] = from[i];
+				peak = Math.max(peak, Math.abs(from[i]));
+			}
+		}
+		offset += piece.length + gap;
+	}
+	const gain = peak > 0 ? 0.89 / peak : 1;
+	for (let c = 0; c < 2; c++) {
+		const data = out.getChannelData(c);
+		for (let i = 0; i < data.length; i++) data[i] *= gain;
+	}
+	return out;
+}
+
 export async function soundEffectFile(effect: SoundEffect): Promise<File> {
-	const wav = toWav(await render(effect));
-	return new File([wav], soundEffectFileName(effect), { type: "audio/wav" });
+	const buffer = effect in RECORDED ? await recorded(effect as RecordedEffect) : await render(effect as SynthEffect);
+	return new File([toWav(buffer)], soundEffectFileName(effect), { type: "audio/wav" });
 }

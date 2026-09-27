@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "opencut",
   "display_name": "OpenCut",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Deixe o Claude editar seus vídeos no OpenCut, como um editor profissional.",
   "long_description": "Conecta o Claude ao editor de vídeo OpenCut aberto neste computador. O Claude importa seus vídeos, corta, remove silêncios, gera e estiliza legendas, coloca títulos, ícones, emojis e formas, anima, faz transições, baixa músicas, imagens e vídeos da internet, aplica efeitos de cor, chroma key e máscaras, muda o formato (Reels/TikTok/YouTube), vê o resultado quadro a quadro e exporta. Tudo aparece ao vivo na janela do OpenCut e dá para desfazer com Ctrl+Z. O OpenCut precisa estar aberto.",
   "author": {
@@ -276,6 +276,38 @@
     {
       "name": "auto_reframe",
       "description": "Vídeo horizontal vira vertical seguindo o rosto"
+    },
+    {
+      "name": "add_title",
+      "description": "Títulos animados prontos: pop, máquina de escrever, subir, marca-texto, glitch, carimbo"
+    },
+    {
+      "name": "search_emoji",
+      "description": "Busca emojis animados do Google"
+    },
+    {
+      "name": "add_animated_emoji",
+      "description": "Coloca um emoji animado (🔥 😂 🤯) no vídeo"
+    },
+    {
+      "name": "polish_voice",
+      "description": "Voz com som de podcast (equalização + compressor)"
+    },
+    {
+      "name": "master_audio",
+      "description": "Volume final no padrão do Instagram/TikTok (-14 LUFS)"
+    },
+    {
+      "name": "find_fillers",
+      "description": "Acha os “é…”, “hum…” e muletas (tipo, né)"
+    },
+    {
+      "name": "remove_fillers",
+      "description": "Corta os “é…” e “hum…” da fala"
+    },
+    {
+      "name": "detect_scenes",
+      "description": "Acha os cortes dentro de um vídeo e separa as cenas"
     }
   ],
   "keywords": [

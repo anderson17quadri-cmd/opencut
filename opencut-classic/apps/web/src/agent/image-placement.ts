@@ -25,8 +25,9 @@ export interface ImagePlacement {
 export function imagePlacementCode(placement: ImagePlacement): string {
 	return `
 const P = ${JSON.stringify(placement)};
-function render({ ctx, t, width, height, duration, images, tween, ease, clamp, roundRect }) {
-	const img = images.img;
+function render({ ctx, t, width, height, duration, images, frames, tween, ease, clamp, roundRect }) {
+	// A 3D photo arrives frame by frame (frames.img); a still as images.img.
+	const img = (frames && frames.img) || images.img;
 	if (!img) return;
 	const IN = Math.min(0.45, duration / 3), OUT = Math.min(0.3, duration / 4);
 	const enter = P.animation === "none" ? 1 : clamp(t / IN);

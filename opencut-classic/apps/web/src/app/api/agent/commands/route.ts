@@ -9,6 +9,7 @@ import {
 	rememberSearchResults,
 	writeCreditsFile,
 } from "@/agent/credits";
+import { EMOJI_LICENSE, EMOJI_SOURCE, fetchEmojiAnimation, searchEmoji } from "@/agent/emoji";
 import { animationSeen, fetchAnimation, LOTTIE_LICENSE, searchAnimations } from "@/agent/lottie";
 import { defaultMediaFolders, listMediaFolder } from "@/agent/local-files";
 import { isFromLocalProcess } from "@/agent/request-guards";
@@ -41,6 +42,13 @@ const SLOW_TOOL_TIMEOUT_MS: Record<string, number> = {
 	clean_voice: 30 * 60_000,
 	find_beats: 5 * 60_000,
 	generate_voiceover: 15 * 60_000,
+	rank_pictures: 10 * 60_000,
+	find_fillers: 30 * 60_000,
+	remove_fillers: 30 * 60_000,
+	polish_voice: 15 * 60_000,
+	master_audio: 15 * 60_000,
+	detect_scenes: 30 * 60_000,
+	add_title: 10 * 60_000,
 	auto_reframe: 15 * 60_000,
 	add_transition_effect: 10 * 60_000,
 	punch_zoom: 5 * 60_000,
@@ -72,6 +80,54 @@ async function withCredits(result: unknown) {
 		: rest;
 }
 
+/** CLIP scores above which a picture clearly / probably shows the description. */
+const STRONG_MATCH = 0.27;
+const POSSIBLE_MATCH = 0.24;
+
+/**
+ * Orders picture results by how well they show `match` (CLIP, run in the
+ * editor window), best first, each with a verdict. Falls back to the
+ * search order if the editor can't run the check.
+ */
+async function rankByMatch(
+	found: Awaited<ReturnType<typeof searchFreeMedia>>,
+	match: string,
+	previews: boolean,
+) {
+	const withPictures = await withPreviews(found.results, found.results.length);
+	const ranked = await dispatch({
+		tool: "rank_pictures",
+		args: { text: match, pictures: withPictures.map((item) => ("preview" in item ? item.preview : null)) },
+		timeoutMs: 10 * 60_000,
+	});
+	const scores = ranked.ok ? ((ranked.result as { scores?: Array<number | null> }).scores ?? []) : [];
+	if (!ranked.ok || scores.length !== withPictures.length) {
+		return {
+			...found,
+			results: previews ? withPictures.slice(0, 8).concat(found.results.slice(8)) : found.results,
+			matchNote: `The picture check could not run (${ranked.ok ? "no scores" : ranked.error}); results are in search order — look at the previews.`,
+		};
+	}
+	const verdict = (score: number | null) =>
+		score === null ? "unknown" : score >= STRONG_MATCH ? "strong" : score >= POSSIBLE_MATCH ? "possible" : "weak";
+	const order = withPictures
+		.map((item, index) => ({ item, score: scores[index] }))
+		.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+	return {
+		...found,
+		results: order.map(({ item, score }, index) => {
+			const { preview, ...rest } = item as typeof item & { preview?: unknown };
+			return {
+				...rest,
+				match: verdict(score),
+				matchScore: score === null ? null : Math.round(score * 1000) / 1000,
+				...(previews && preview && index < 8 ? { preview } : {}),
+			};
+		}),
+		matchNote: `Ordered by how well each picture shows "${match}" (AI image check, CLIP): "strong" clearly shows it, "possible" may, "weak" probably doesn't — don't use weak ones; search again with other words instead.`,
+	};
+}
+
 /** Tools that run in this server process rather than the editor window. */
 async function runServerTool(
 	tool: string,
@@ -93,6 +149,10 @@ async function runServerTool(
 				commercial: typeof args.commercialUse === "boolean" ? args.commercialUse : undefined,
 			});
 			rememberSearchResults(found.results);
+			const match = str(args.match).trim();
+			if (str(args.type) === "image" && match) {
+				return { handled: true, result: await rankByMatch(found, match, args.previews !== false) };
+			}
 			// Pictures come with small previews so Claude can pick the right one.
 			if (str(args.type) === "image" && args.previews !== false) {
 				return { handled: true, result: { ...found, results: await withPreviews(found.results) } };
@@ -180,6 +240,27 @@ async function runServerTool(
 				}).catch(() => {});
 			}
 			return { handled: true, result: placed.result };
+		}
+		case "search_emoji":
+			return { handled: true, result: searchEmoji({ query: str(args.query), limit: typeof args.limit === "number" ? args.limit : undefined }) };
+		case "add_animated_emoji": {
+			const found = await fetchEmojiAnimation(str(args.emoji));
+			const { emoji: _emoji, ...placement } = args;
+			const placed = await dispatch({
+				tool: "place_animation",
+				args: { widthPercent: 22, loop: true, duration: 2.5, name: `Emoji ${found.emoji}`, ...placement, animation: found.animation },
+				timeoutMs: SLOW_TOOL_TIMEOUT_MS.place_animation,
+			});
+			if (!placed.ok) throw new Error(placed.error ?? "Could not add the emoji.");
+			const mediaId = (placed.result as { mediaId?: string }).mediaId;
+			if (mediaId) {
+				await recordRenderedCredit({
+					mediaId,
+					key: "Noto Animated Emoji",
+					credit: { title: "Emojis animados Noto", creator: "Google", license: EMOJI_LICENSE, sourcePage: EMOJI_SOURCE, url: EMOJI_SOURCE },
+				}).catch(() => {});
+			}
+			return { handled: true, result: { emoji: found.emoji, name: found.name, ...(placed.result as object) } };
 		}
 		default:
 			return { handled: false };

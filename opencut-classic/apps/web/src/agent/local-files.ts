@@ -1,6 +1,6 @@
 import { mkdir, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { extname, isAbsolute, join, parse } from "node:path";
+import { extname, isAbsolute, join } from "node:path";
 
 const MIME_BY_EXTENSION: Record<string, string> = {
 	".mp4": "video/mp4",
@@ -90,6 +90,8 @@ export async function nextExportPath({
 	});
 }
 
+const MEDIA_EXTENSIONS = /^\.(mp4|m4v|webm|mov|mkv|avi|mp3|wav|ogg|oga|opus|m4a|aac|flac|jpe?g|png|gif|webp|avif|svg|json|bin)$/i;
+
 /** A path in `folder` (created if needed) that doesn't overwrite anything. */
 export async function nextFreePath({
 	folder,
@@ -104,9 +106,15 @@ export async function nextFreePath({
 }): Promise<string> {
 	await mkdir(folder, { recursive: true });
 
+	// Only a real file extension is dropped: "Vídeo 2.0" keeps its "2.0".
+	const withoutExtension = name.replace(/\.[a-z0-9]{2,5}$/i, (ext) => (MEDIA_EXTENSIONS.test(ext) ? "" : ext));
 	const safeName =
-		parse(name).name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").trim().slice(0, 120) ||
-		fallbackName;
+		withoutExtension
+			.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
+			.trim()
+			.slice(0, 120)
+			// Windows doesn't allow names ending in a dot or space.
+			.replace(/[. ]+$/, "") || fallbackName;
 	for (let attempt = 0; ; attempt++) {
 		const suffix = attempt === 0 ? "" : ` (${attempt})`;
 		const candidate = join(folder, `${safeName}${suffix}.${extension}`);

@@ -24,8 +24,10 @@ import { ICON_ID_PATTERN, iconSvgUrl } from "./icons";
 import { type ImageAnimation, type ImageStyle, imagePlacementCode } from "./image-placement";
 import { ANCHORS } from "./layout";
 import { lottieCode, lottieSeconds } from "./lottie-placement";
+import { TITLE_PRESETS, TITLE_SOUNDS, type TitlePreset, titleCode } from "./titles";
 import { SOUND_EFFECTS, SOUND_LEAD, type SoundEffect, soundEffectFile, soundEffectFileName } from "./sound-effects";
 import { cutoutPerson } from "./vision";
+import { type ParallaxMotion, parallaxFrames, pictureSimilarity, upscalePicture } from "./ai-models";
 import {
 	type MotionGraphicSpec,
 	type MotionMode,
@@ -377,6 +379,64 @@ async function placeImage(args: Args) {
 		bitmap = resized;
 	}
 
+	const canvasLong = Math.max(canvas.width, canvas.height);
+	// Small pictures shown big get their resolution doubled by AI first
+	// (Swin2SR), so they stay sharp. "auto": full-screen pictures that would
+	// be enlarged more than 1.4×.
+	const enhance = args.enhance === true ? true : args.enhance === false ? false : "auto";
+	const enlarge =
+		style === "fullscreen"
+			? Math.max(canvas.width / bitmap.width, canvas.height / bitmap.height)
+			: (canvas.width * Math.min(Math.max(widthPercent, 5), 100)) / 100 / bitmap.width;
+	let enhanced = false;
+	let enhanceError: string | null = null;
+	if ((enhance === true && enlarge > 1.05) || (enhance === "auto" && enlarge > 1.4 && bitmap.width * bitmap.height <= 1_300_000)) {
+		const progress = progressToast("Melhorando a resolução da imagem");
+		try {
+			const sharper = await upscalePicture(bitmap);
+			bitmap.close();
+			bitmap = sharper;
+			enhanced = true;
+			progress.done("Imagem mais nítida");
+		} catch (error) {
+			// Keeps the original picture.
+			enhanceError = error instanceof Error ? error.message : String(error);
+			progress.fail();
+		}
+		if (Math.max(bitmap.width, bitmap.height) > Math.max(MAX_IMAGE_SIDE, canvasLong)) {
+			const scale = Math.max(MAX_IMAGE_SIDE, canvasLong) / Math.max(bitmap.width, bitmap.height);
+			const resized = await createImageBitmap(bitmap, {
+				resizeWidth: Math.round(bitmap.width * scale),
+				resizeHeight: Math.round(bitmap.height * scale),
+				resizeQuality: "high",
+			});
+			bitmap.close();
+			bitmap = resized;
+		}
+	}
+
+	// 3D photo: the still picture moves like a camera gliding through it
+	// (depth by AI, near things move more than far ones).
+	const photo3d = (["push", "pan", "orbit"] as const).find((m) => m === args.photo3d) ?? (args.photo3d === true ? "push" : null);
+	const fps = Math.min(Math.max(Math.round(frameRateToFloat(project.settings.fps)), 1), 60);
+	let parallax: Awaited<ReturnType<typeof parallaxFrames>> | null = null;
+	if (photo3d) {
+		const progress = progressToast("Calculando a profundidade da foto");
+		try {
+			parallax = await parallaxFrames({
+				picture: bitmap,
+				motion: photo3d as ParallaxMotion,
+				strength: optNum(args, "strength3d") ?? 1,
+			});
+			progress.done("Foto 3D pronta para animar");
+		} catch (error) {
+			progress.fail();
+			throw new Error(
+				`Could not make the 3D photo (internet needed the first time to download the depth model): ${error instanceof Error ? error.message : error}`,
+			);
+		}
+	}
+
 	const spec: MotionGraphicSpec = {
 		code: imagePlacementCode({
 			style,
@@ -388,23 +448,31 @@ async function placeImage(args: Args) {
 			tilt: optNum(args, "tilt") ?? 0,
 			label,
 			labelFont,
-			kenBurns: args.kenBurns !== false,
+			// The 3D motion replaces the slow zoom.
+			kenBurns: args.kenBurns !== false && !parallax,
 		}),
 		mode: "2d",
 		width: canvas.width,
 		height: canvas.height,
-		fps: Math.min(Math.max(Math.round(frameRateToFloat(project.settings.fps)), 1), 60),
+		fps,
 		duration,
 		fonts: label ? [labelFont] : [],
 		images: { img: bitmap },
 	};
 	const behindPerson = args.behindPerson === true;
-	const result = await renderMotionGraphicClip({
-		spec,
-		name: `Imagem: ${label ?? asset.name}`.slice(0, 80),
-		start,
-		trackIndex: behindPerson ? undefined : 0,
-	});
+	const motion = parallax;
+	let result: Awaited<ReturnType<typeof renderMotionGraphicClip>>;
+	try {
+		result = await renderMotionGraphicClip({
+			spec,
+			name: `Imagem${motion ? " 3D" : ""}: ${label ?? asset.name}`.slice(0, 80),
+			start,
+			trackIndex: behindPerson ? undefined : 0,
+			...(motion ? { frames: async (_index: number, time: number) => ({ img: await motion.frame(Math.min(1, time / duration)) }) } : {}),
+		});
+	} finally {
+		motion?.close();
+	}
 	const sound = await addSoundEffect({ effect: args.sound, at: start });
 	return {
 		...result,
@@ -413,6 +481,9 @@ async function placeImage(args: Args) {
 		imageName: asset.name,
 		style,
 		animation,
+		...(photo3d ? { photo3d } : {}),
+		...(enhanced ? { enhanced: "resolution doubled by AI (Swin2SR)" } : {}),
+		...(enhanceError ? { enhanceError: `AI upscaling failed, the original picture was used: ${enhanceError}` } : {}),
 		note: "Check it with view_frames. To change it, delete_clips this clip and call place_image again.",
 	};
 }
@@ -518,6 +589,83 @@ async function placeAnimation(args: Args) {
 	};
 }
 
+const HEX = /^#?[0-9a-f]{6}$/i;
+const hex = (value: unknown, fallback: string) =>
+	typeof value === "string" && HEX.test(value) ? (value.startsWith("#") ? value : `#${value}`) : fallback;
+
+/** Kinetic typography title from a preset (pop, typewriter, slide_up, highlight, glitch, stamp). */
+async function addTitle(args: Args) {
+	const project = requireOpenProject();
+	const text = str(args, "text").trim();
+	if (!text) throw new Error('"text" is required');
+	if (text.length > 140) throw new Error("Keep titles short (140 characters at most).");
+	const preset = (TITLE_PRESETS as readonly string[]).includes(args.preset as string) ? (args.preset as TitlePreset) : "pop";
+	const canvas = project.settings.canvasSize;
+	const duration = Math.min(Math.max(optNum(args, "duration") ?? 2.5, 0.8), 20);
+	const start = Math.max(0, optNum(args, "start") ?? toSeconds(editor().playback.getCurrentTime()));
+	const position = args.position === "center" ? 0.5 : args.position === "bottom" ? 0.74 : 0.22;
+	const yPercent = optNum(args, "y");
+	const font = typeof args.font === "string" && /^[\w\s-]{1,60}$/.test(args.font) ? args.font : "Montserrat";
+	const sizePercent = Math.min(Math.max(optNum(args, "size") ?? 6.5, 2), 20);
+	const result = await renderMotionGraphicClip({
+		spec: {
+			code: titleCode({
+				preset,
+				text,
+				subtitle: typeof args.subtitle === "string" && args.subtitle.trim() ? args.subtitle.trim().slice(0, 100) : null,
+				accentWords: Array.isArray(args.accentWords) ? args.accentWords.filter((w): w is string => typeof w === "string") : [],
+				font,
+				size: (sizePercent * canvas.height) / 100,
+				color: hex(args.color, "#ffffff"),
+				accentColor: hex(args.accentColor, "#ffd400"),
+				box: args.box === undefined || args.box === false || args.box === "none" ? null : hex(args.box, "#111111"),
+				outline: args.outline !== false,
+				uppercase: args.uppercase !== false,
+				y: yPercent === undefined ? position : Math.min(Math.max(yPercent, 0), 100) / 100,
+			}),
+			mode: "2d",
+			width: canvas.width,
+			height: canvas.height,
+			fps: Math.min(Math.max(Math.round(frameRateToFloat(project.settings.fps)), 1), 60),
+			duration,
+			fonts: [font],
+		},
+		name: `Título: ${text}`.slice(0, 60),
+		start,
+		trackIndex: args.behindPerson === true ? undefined : 0,
+	});
+	const soundName = typeof args.sound === "string" ? args.sound : TITLE_SOUNDS[preset];
+	// The stamp lands after its 0.16 s slam; the others on their first word.
+	const hit = start + (preset === "stamp" ? 0.16 : preset === "slide_up" ? 0.15 : 0);
+	const sound = soundName === "none" ? null : await addSoundEffect({ effect: soundName, at: hit, volumeDb: -6 });
+	return {
+		...result,
+		preset,
+		...(sound ? { soundClipId: sound.clipId, sound: soundName } : {}),
+		note: "Check it with view_frames (a moment after it starts). To change it, delete_clips this clip (and its sound) and add it again.",
+	};
+}
+
+/** CLIP similarity of each picture (base64) to a description; used by the search. */
+async function rankPictures(args: Args) {
+	const text = str(args, "text").trim();
+	const pictures = Array.isArray(args.pictures) ? (args.pictures as Array<{ data?: string; mimeType?: string } | null>) : [];
+	const blobs = pictures.map((picture) => {
+		if (!picture?.data) return new Blob([]);
+		const bytes = Uint8Array.from(atob(picture.data), (c) => c.charCodeAt(0));
+		return new Blob([bytes], { type: picture.mimeType ?? "image/jpeg" });
+	});
+	const progress = progressToast("Conferindo as imagens");
+	try {
+		const scores = await pictureSimilarity({ text, pictures: blobs });
+		progress.done("Imagens conferidas");
+		return { scores };
+	} catch (error) {
+		progress.fail();
+		throw error;
+	}
+}
+
 export async function runGraphicsTool({
 	tool,
 	args,
@@ -536,6 +684,10 @@ export async function runGraphicsTool({
 			return placeImage(args);
 		case "place_animation":
 			return placeAnimation(args);
+		case "rank_pictures":
+			return rankPictures(args);
+		case "add_title":
+			return addTitle(args);
 		default:
 			throw new Error(`Unknown tool: ${tool}`);
 	}

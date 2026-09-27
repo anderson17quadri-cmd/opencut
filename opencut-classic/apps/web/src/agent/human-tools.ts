@@ -647,6 +647,111 @@ async function duckMusic(args: Args) {
 
 // ---------------------------------------------------------------- dispatch
 
+// ------------------------------------------------------ scene detection
+
+/** Mean HSV of a small frame, per pixel (PySceneDetect's content measure). */
+function hsvPixels(canvas: OffscreenCanvas): Float32Array {
+	const ctx = canvas.getContext("2d", { willReadFrequently: true });
+	const out = new Float32Array(canvas.width * canvas.height * 3);
+	if (!ctx) return out;
+	const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+	for (let i = 0, p = 0; i < data.length; i += 4, p += 3) {
+		const r = data[i] / 255;
+		const g = data[i + 1] / 255;
+		const b = data[i + 2] / 255;
+		const max = Math.max(r, g, b);
+		const min = Math.min(r, g, b);
+		const d = max - min;
+		let h = 0;
+		if (d > 0) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+		// OpenCV's 8-bit ranges, as in PySceneDetect: H 0-180, S and V 0-255.
+		out[p] = ((h * 60 + 360) % 360) / 2;
+		out[p + 1] = max === 0 ? 0 : (d / max) * 255;
+		out[p + 2] = max * 255;
+	}
+	return out;
+}
+
+/**
+ * Finds the cuts inside a clip (a video that already has several shots):
+ * the content detector of PySceneDetect (BSD) — the average change of hue,
+ * saturation and brightness from one frame to the next. Optionally splits
+ * the clip at each cut, so each shot can be trimmed, moved or transitioned.
+ */
+async function detectScenes(args: Args) {
+	requireOpenProject();
+	const { track, element } = findElement(str(args, "clipId"));
+	if (element.type !== "video") throw new Error("detect_scenes works on video clips.");
+	const asset = mediaAsset(element);
+	if (!asset) throw new Error("The clip's media is missing.");
+	const threshold = Math.min(Math.max(optNum(args, "threshold") ?? 27, 5), 100);
+	const minScene = Math.max(optNum(args, "minSceneSeconds") ?? 0.6, 0.2);
+	const rate = ("retime" in element ? element.retime?.rate : undefined) ?? 1;
+	const clipStart = toSeconds(element.startTime);
+	const clipEnd = clipStart + toSeconds(element.duration);
+	const sourceStart = sourceTime(element, clipStart);
+
+	const small = new OffscreenCanvas(96, 54);
+	const smallCtx = small.getContext("2d", { willReadFrequently: true });
+	let previous: Float32Array | null = null;
+	const cuts: Array<{ time: number; score: number }> = [];
+	let lastCut = clipStart;
+	for await (const frame of videoFrames({
+		file: asset.file,
+		start: sourceStart,
+		end: sourceTime(element, clipEnd),
+		maxWidth: 320,
+	})) {
+		smallCtx?.drawImage(frame.canvas, 0, 0, small.width, small.height);
+		const current = hsvPixels(small);
+		const timeline = clipStart + (frame.timestamp - sourceStart) / rate;
+		if (previous) {
+			let hue = 0;
+			let sat = 0;
+			let val = 0;
+			for (let p = 0; p < current.length; p += 3) {
+				const dh = Math.abs(current[p] - previous[p]);
+				hue += Math.min(dh, 180 - dh);
+				sat += Math.abs(current[p + 1] - previous[p + 1]);
+				val += Math.abs(current[p + 2] - previous[p + 2]);
+			}
+			const pixels = current.length / 3;
+			const score = (hue / pixels + sat / pixels + val / pixels) / 3;
+			if (score >= threshold && timeline - lastCut >= minScene && clipEnd - timeline >= 0.2) {
+				cuts.push({ time: round2(timeline), score: round2(score) });
+				lastCut = timeline;
+			}
+		}
+		previous = current;
+	}
+
+	const scenes = [clipStart, ...cuts.map((c) => c.time), clipEnd].slice(0, -1).map((start, i, all) => ({
+		start: round2(start),
+		end: round2(i + 1 < all.length ? all[i + 1] : clipEnd),
+	}));
+	let clipIds: string[] | undefined;
+	if (args.split === true && cuts.length) {
+		await asOneStep(() => {
+			for (const cut of [...cuts].reverse()) {
+				const current = allTracks()
+					.find((t) => t.id === track.id)
+					?.elements.find((e) => e.startTime < fromSeconds(cut.time) && e.startTime + e.duration > fromSeconds(cut.time) && ("mediaId" in e ? e.mediaId === asset.id : false));
+				if (!current) continue;
+				new SplitElementsCommand({ elements: [{ trackId: track.id, elementId: current.id }], splitTime: fromSeconds(cut.time) }).execute();
+			}
+		});
+		clipIds = (allTracks().find((t) => t.id === track.id)?.elements ?? [])
+			.filter((e) => "mediaId" in e && e.mediaId === asset.id && toSeconds(e.startTime) >= clipStart - 0.01 && toSeconds(e.startTime) < clipEnd - 0.01)
+			.sort((a, b) => a.startTime - b.startTime)
+			.map((e) => e.id);
+	}
+	return {
+		cuts,
+		scenes,
+		...(clipIds ? { clipIds, note: "The clip was split at every cut; each shot is now its own clip (ids in order)." } : { note: "Pass split=true to split the clip at these cuts." }),
+	};
+}
+
 // --------------------------------------------------------- auto reframe
 
 /**
@@ -760,7 +865,7 @@ async function autoReframe(args: Args) {
 	};
 }
 
-export const HUMAN_TOOLS = new Set(["explode_layers", "punch_zoom", "add_sound_effect", "duck_music", "auto_reframe"]);
+export const HUMAN_TOOLS = new Set(["explode_layers", "punch_zoom", "add_sound_effect", "duck_music", "auto_reframe", "detect_scenes"]);
 
 export async function runHumanTool({ tool, args }: { tool: string; args: Args }): Promise<unknown> {
 	switch (tool) {
@@ -774,6 +879,8 @@ export async function runHumanTool({ tool, args }: { tool: string; args: Args })
 			return duckMusic(args);
 		case "auto_reframe":
 			return autoReframe(args);
+		case "detect_scenes":
+			return detectScenes(args);
 		default:
 			throw new Error(`Unknown tool: ${tool}`);
 	}

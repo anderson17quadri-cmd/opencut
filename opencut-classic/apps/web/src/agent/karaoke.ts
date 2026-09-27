@@ -24,7 +24,56 @@ export interface KaraokeStyle {
 	uppercase: boolean;
 	/** Max text width, fraction of the frame width. */
 	maxWidth: number;
+	/** How the spoken word stands out: its colour, or a coloured box behind it. */
+	highlightMode: "color" | "box";
+	/** How much the spoken word grows when it starts (0 = none). */
+	pop: number;
+	/** Black outline around the letters (when there's no box). */
+	outline: boolean;
+	/** Glow in the highlight colour (neon look). */
+	glow: boolean;
+	/** Highlight colours used in turn, one per phrase (overrides highlightColor). */
+	alternateColors: string[] | null;
 }
+
+export const CAPTION_PRESETS = ["karaoke", "hormozi", "box", "one_word", "minimal", "neon"] as const;
+export type CaptionPreset = (typeof CAPTION_PRESETS)[number];
+
+/** Social-media caption looks; the user's explicit options override them. */
+export const CAPTION_PRESET_STYLES: Record<
+	CaptionPreset,
+	Partial<KaraokeStyle> & { wordsPerCaption: number; fontSizePercent: number; font: string }
+> = {
+	// The default: spoken word lights up in yellow and pops.
+	karaoke: { wordsPerCaption: 3, fontSizePercent: 6, font: "Montserrat" },
+	// Big, two words at a time, spoken word in yellow then green, bouncy.
+	hormozi: {
+		wordsPerCaption: 2,
+		fontSizePercent: 7.5,
+		font: "Montserrat",
+		pop: 0.25,
+		upcomingOpacity: 1,
+		alternateColors: ["#ffd400", "#3ddc84"],
+	},
+	// CapCut style: a coloured box slides behind the spoken word.
+	box: { wordsPerCaption: 3, fontSizePercent: 6, font: "Montserrat", highlightMode: "box", highlightColor: "#7c3aed", upcomingOpacity: 1 },
+	// One huge word at a time.
+	one_word: { wordsPerCaption: 1, fontSizePercent: 9, font: "Anton", pop: 0.3, uppercase: true },
+	// Clean sentence-case subtitles, no effects.
+	minimal: {
+		wordsPerCaption: 6,
+		fontSizePercent: 4.2,
+		font: "Inter",
+		fontWeight: 700,
+		pop: 0,
+		upcomingOpacity: 1,
+		uppercase: false,
+		outline: false,
+		boxColor: "rgba(0,0,0,0.55)",
+	},
+	// Glowing neon highlight.
+	neon: { wordsPerCaption: 3, fontSizePercent: 6.5, font: "Bebas Neue", highlightColor: "#00f0ff", glow: true, fontWeight: 400 },
+};
 
 export function groupWords({
 	words,
@@ -76,8 +125,10 @@ const DATA = ${data};
 function render({ ctx, t, width, height, clamp, roundRect }) {
 	const T = t + DATA.offset;
 	const S = DATA.style;
-	const group = DATA.groups.find((g) => T >= g.start && T < g.end);
-	if (!group) return;
+	const groupIndex = DATA.groups.findIndex((g) => T >= g.start && T < g.end);
+	if (groupIndex < 0) return;
+	const group = DATA.groups[groupIndex];
+	const highlight = S.alternateColors ? S.alternateColors[groupIndex % S.alternateColors.length] : S.highlightColor;
 	ctx.font = S.fontWeight + " " + S.fontSize + "px \\"" + S.fontFamily + "\\", sans-serif";
 	ctx.textBaseline = "middle";
 	const space = ctx.measureText(" ").width;
@@ -113,16 +164,30 @@ function render({ ctx, t, width, height, clamp, roundRect }) {
 		for (const w of line) {
 			const active = T >= w.start && T < w.end;
 			const spoken = T >= w.end;
-			const pop = active ? 1 + 0.12 * (1 - clamp((T - w.start) / 0.15)) : 1;
+			const pop = active ? 1 + S.pop * (1 - clamp((T - w.start) / 0.15)) : 1;
 			ctx.save();
 			ctx.translate(x + w.width / 2, y);
 			ctx.scale(pop, pop);
+			ctx.globalAlpha = appear * (active || spoken ? 1 : S.upcomingOpacity);
+			if (active && S.highlightMode === "box") {
+				const pad = S.fontSize * 0.16;
+				ctx.fillStyle = highlight;
+				roundRect(ctx, -w.width / 2 - pad, -lineHeight / 2 + pad * 0.4, w.width + pad * 2, lineHeight - pad * 0.8, S.fontSize * 0.18);
+				ctx.fill();
+			}
 			ctx.lineJoin = "round";
 			ctx.lineWidth = S.fontSize * 0.14;
 			ctx.strokeStyle = "rgba(0,0,0,0.85)";
-			ctx.globalAlpha = appear * (active || spoken ? 1 : S.upcomingOpacity);
-			if (!S.boxColor) ctx.strokeText(w.text, -w.width / 2, 0);
-			ctx.fillStyle = active ? S.highlightColor : S.color;
+			if (S.outline && !S.boxColor && !(active && S.highlightMode === "box")) ctx.strokeText(w.text, -w.width / 2, 0);
+			if (!S.outline && !S.boxColor) {
+				ctx.shadowColor = "rgba(0,0,0,0.7)";
+				ctx.shadowBlur = S.fontSize * 0.2;
+			}
+			if (S.glow && active) {
+				ctx.shadowColor = highlight;
+				ctx.shadowBlur = S.fontSize * 0.5;
+			}
+			ctx.fillStyle = active && S.highlightMode === "color" ? highlight : S.color;
 			ctx.fillText(w.text, -w.width / 2, 0);
 			ctx.restore();
 			x += w.width + space;

@@ -5,6 +5,9 @@ import { buildElementFromMedia } from "@/timeline/element-utils";
 import { DEEPFILTER_GLUE } from "./deepfilter-glue";
 import { progressToast } from "./graphics-tools";
 import { mediaTimeToSeconds } from "@/wasm";
+import { createTimelineAudioBuffer } from "@/media/audio";
+import { VOLUME_DB_MAX, VOLUME_DB_MIN } from "@/timeline/audio-constants";
+import { measureLoudness } from "./loudness";
 import {
 	type Args,
 	allTracks,
@@ -170,6 +173,61 @@ function toWav(samples: Float32Array): ArrayBuffer {
 	return bytes;
 }
 
+/**
+ * Plays processed audio in place of a clip's sound: same timing, trim,
+ * speed and volume on an audio layer; the original clip is muted.
+ */
+async function replaceClipAudio({
+	element,
+	file,
+	label,
+}: {
+	element: Extract<TimelineElement, { type: "video" | "audio" }>;
+	file: File;
+	label: string;
+}) {
+	const media = await importMediaFile(file);
+	const cleanAsset = editor()
+		.media.getAssets()
+		.find((candidate) => candidate.id === media.mediaId);
+	if (!cleanAsset) throw new Error("The clean audio could not be imported.");
+
+	// The clean audio replaces the clip's sound: same timing, trim, speed and
+	// volume on an audio layer; the original clip is muted.
+	const volume = typeof element.params.volume === "number" ? element.params.volume : 0;
+	const placed = await asOneStep(() => {
+		const base = buildElementFromMedia({
+			mediaId: cleanAsset.id,
+			mediaType: cleanAsset.type,
+			name: `${element.name} (${label})`,
+			duration: element.duration,
+			startTime: element.startTime,
+		});
+		const copy = {
+			...base,
+			trimStart: element.trimStart,
+			trimEnd: element.trimEnd,
+			...("retime" in element && element.retime ? { retime: element.retime } : {}),
+			params: { ...base.params, volume },
+		} as typeof base;
+		const before = new Set(allTracks().flatMap((t) => t.elements.map((e) => e.id)));
+		new InsertElementCommand({ element: copy, placement: { mode: "auto", trackType: "audio" } }).execute();
+		const mute = <T extends { elements: TimelineElement[] }>(t: T): T => ({
+			...t,
+			elements: t.elements.map((e) => (e.id === element.id ? ({ ...e, params: { ...e.params, muted: true } } as TimelineElement) : e)),
+		});
+		const now = sceneTracks();
+		editor().timeline.updateTracks({ overlay: now.overlay.map(mute), main: mute(now.main), audio: now.audio.map(mute) });
+		for (const t of allTracks()) {
+			const inserted = t.elements.find((e) => !before.has(e.id));
+			if (inserted) return { trackId: t.id, clipId: inserted.id };
+		}
+		throw new Error("The editor rejected the clean audio clip.");
+	});
+
+	return { ...placed, mediaId: media.mediaId };
+}
+
 async function cleanVoice(args: Args) {
 	requireOpenProject();
 	const { track, element } = findElement(str(args, "clipId"));
@@ -199,48 +257,10 @@ async function cleanVoice(args: Args) {
 	}
 
 	const file = new File([toWav(clean)], `${asset.name.replace(/\.[^.]+$/, "")} - voz limpa.wav`, { type: "audio/wav" });
-	const media = await importMediaFile(file);
-	const cleanAsset = editor()
-		.media.getAssets()
-		.find((candidate) => candidate.id === media.mediaId);
-	if (!cleanAsset) throw new Error("The clean audio could not be imported.");
-
-	// The clean audio replaces the clip's sound: same timing, trim, speed and
-	// volume on an audio layer; the original clip is muted.
-	const volume = typeof element.params.volume === "number" ? element.params.volume : 0;
-	const result = await asOneStep(() => {
-		const base = buildElementFromMedia({
-			mediaId: cleanAsset.id,
-			mediaType: cleanAsset.type,
-			name: `${element.name} (voz limpa)`,
-			duration: element.duration,
-			startTime: element.startTime,
-		});
-		const copy = {
-			...base,
-			trimStart: element.trimStart,
-			trimEnd: element.trimEnd,
-			...("retime" in element && element.retime ? { retime: element.retime } : {}),
-			params: { ...base.params, volume },
-		} as typeof base;
-		const before = new Set(allTracks().flatMap((t) => t.elements.map((e) => e.id)));
-		new InsertElementCommand({ element: copy, placement: { mode: "auto", trackType: "audio" } }).execute();
-		const mute = <T extends { elements: TimelineElement[] }>(t: T): T => ({
-			...t,
-			elements: t.elements.map((e) => (e.id === element.id ? ({ ...e, params: { ...e.params, muted: true } } as TimelineElement) : e)),
-		});
-		const now = sceneTracks();
-		editor().timeline.updateTracks({ overlay: now.overlay.map(mute), main: mute(now.main), audio: now.audio.map(mute) });
-		for (const t of allTracks()) {
-			const inserted = t.elements.find((e) => !before.has(e.id));
-			if (inserted) return { trackId: t.id, clipId: inserted.id };
-		}
-		throw new Error("The editor rejected the clean audio clip.");
-	});
+	const result = await replaceClipAudio({ element, file, label: "voz limpa" });
 
 	return {
 		...result,
-		mediaId: media.mediaId,
 		originalClipId: element.id,
 		originalTrackId: track.id,
 		strength,
@@ -387,7 +407,167 @@ async function generateVoiceover(args: Args) {
 	};
 }
 
-export const AUDIO_TOOLS = new Set(["clean_voice", "find_beats", "generate_voiceover"]);
+/** The clip's media asset (video or audio clips). */
+function clipAudioAsset(clipId: string, tool: string) {
+	const { track, element } = findElement(clipId);
+	if (element.type !== "video" && element.type !== "audio") throw new Error(`${tool} works on video or audio clips.`);
+	if (!("mediaId" in element)) throw new Error("That clip has no media.");
+	const asset = editor()
+		.media.getAssets()
+		.find((candidate) => candidate.id === element.mediaId);
+	if (!asset) throw new Error("The clip's media is missing.");
+	return { track, element, asset };
+}
+
+/** Loudness a polished voice is set to (a little under the -14 LUFS mix). */
+const VOICE_TARGET_LUFS = -16;
+
+/**
+ * "Podcast voice": the processing chain editors put on a voice — rumble
+ * cut, less boom and mud, more presence and air, then a compressor that
+ * evens out loud and soft words — set to a steady loudness.
+ */
+async function polishVoice(args: Args) {
+	requireOpenProject();
+	const { track, element, asset } = clipAudioAsset(str(args, "clipId"), "polish_voice");
+	const amount = args.strength === "light" ? 0.6 : args.strength === "strong" ? 1.4 : 1;
+	const progress = progressToast("Deixando a voz com som de podcast");
+	let file: File;
+	let before: number;
+	let after: number;
+	try {
+		const mono = await decodeMono(asset.file);
+		before = measureLoudness([mono, mono], SAMPLE_RATE).lufs;
+		const context = new OfflineAudioContext(1, mono.length, SAMPLE_RATE);
+		const input = context.createBuffer(1, mono.length, SAMPLE_RATE);
+		input.getChannelData(0).set(mono);
+		const source = context.createBufferSource();
+		source.buffer = input;
+		const band = (type: BiquadFilterType, frequency: number, gainDb: number, q = 0.9) => {
+			const node = context.createBiquadFilter();
+			node.type = type;
+			node.frequency.value = frequency;
+			node.gain.value = gainDb * amount;
+			node.Q.value = q;
+			return node;
+		};
+		const compressor = context.createDynamicsCompressor();
+		compressor.threshold.value = -20 - 6 * amount;
+		compressor.knee.value = 8;
+		compressor.ratio.value = 2 + 1.5 * amount;
+		compressor.attack.value = 0.006;
+		compressor.release.value = 0.14;
+		const chain: AudioNode[] = [
+			band("highpass", 75, 0, 0.707),
+			band("highpass", 75, 0, 0.707),
+			band("peaking", 180, -1.5),
+			band("peaking", 350, -2.5, 1.1),
+			band("peaking", 3200, 3, 0.8),
+			band("highshelf", 9500, 2.5, 0.7),
+			compressor,
+		];
+		chain.reduce<AudioNode>((from, to) => {
+			from.connect(to);
+			return to;
+		}, source);
+		chain[chain.length - 1].connect(context.destination);
+		source.start(0);
+		const rendered = (await context.startRendering()).getChannelData(0);
+		// Steady loudness, never above -1 dBFS.
+		const measured = measureLoudness([rendered, rendered], SAMPLE_RATE);
+		let gainDb = Number.isFinite(measured.lufs) ? VOICE_TARGET_LUFS - measured.lufs : 0;
+		gainDb = Math.min(gainDb, -1 - measured.peakDb);
+		const gain = 10 ** (gainDb / 20);
+		const out = rendered.map((v) => Math.max(-0.98, Math.min(0.98, v * gain)));
+		after = measureLoudness([out, out], SAMPLE_RATE).lufs;
+		file = new File([toWav(out)], `${asset.name.replace(/\.[^.]+$/, "")} - voz podcast.wav`, { type: "audio/wav" });
+		progress.done("Voz tratada");
+	} catch (error) {
+		progress.fail();
+		throw error;
+	}
+	const result = await replaceClipAudio({ element, file, label: "voz tratada" });
+	const round1 = (v: number) => (Number.isFinite(v) ? Math.round(v * 10) / 10 : null);
+	return {
+		...result,
+		originalClipId: element.id,
+		originalTrackId: track.id,
+		loudnessBefore: round1(before),
+		loudnessAfter: round1(after),
+		note: "The original clip is muted and the treated voice plays in its place, in sync. Run master_audio at the very end to set the whole video's loudness.",
+	};
+}
+
+/**
+ * Sets the whole video's loudness to what the platforms expect (-14 LUFS
+ * by default): measures the mix and moves every sound's volume by the
+ * same amount, so the balance between voice, music and effects stays.
+ */
+async function masterAudio(args: Args) {
+	requireOpenProject();
+	const target = Math.min(Math.max(typeof args.targetLufs === "number" ? args.targetLufs : -14, -24), -9);
+	const e = editor();
+	const measure = async () => {
+		const buffer = await createTimelineAudioBuffer({
+			tracks: sceneTracks(),
+			mediaAssets: e.media.getAssets(),
+			duration: e.timeline.getTotalDuration(),
+		});
+		if (!buffer) return null;
+		const channels = Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c));
+		return measureLoudness(channels, buffer.sampleRate);
+	};
+	const progress = progressToast("Ajustando o volume final");
+	try {
+		const first = await measure();
+		if (!first || !Number.isFinite(first.lufs)) throw new Error("There is no sound in the video to master.");
+		let current = first;
+		let changedClips = 0;
+		// Twice at most: the export limiter can hold loud peaks back.
+		for (let pass = 0; pass < 2 && Math.abs(target - current.lufs) > 0.5; pass++) {
+			const delta = Math.min(Math.max(target - current.lufs, -30), 18);
+			const shift = (value: number) => Math.min(VOLUME_DB_MAX, Math.max(VOLUME_DB_MIN, value + delta));
+			changedClips = 0;
+			await asOneStep(() => {
+				const adjust = <T extends { elements: TimelineElement[] }>(t: T): T => ({
+					...t,
+					elements: t.elements.map((element) => {
+						if (element.type !== "video" && element.type !== "audio") return element;
+						changedClips++;
+						const volume = typeof element.params.volume === "number" ? element.params.volume : 0;
+						const channel = element.animations?.volume as { keys?: Array<{ value: number }> } | undefined;
+						const animations =
+							channel?.keys && element.animations
+								? {
+										...element.animations,
+										volume: { ...channel, keys: channel.keys.map((key) => ({ ...key, value: shift(key.value) })) },
+									}
+								: element.animations;
+						return { ...element, params: { ...element.params, volume: shift(volume) }, animations } as TimelineElement;
+					}),
+				});
+				const now = sceneTracks();
+				e.timeline.updateTracks({ overlay: now.overlay.map(adjust), main: adjust(now.main), audio: now.audio.map(adjust) });
+			});
+			current = (await measure()) ?? current;
+		}
+		progress.done("Volume final ajustado");
+		const round1 = (v: number) => Math.round(v * 10) / 10;
+		return {
+			targetLufs: target,
+			loudnessBefore: round1(first.lufs),
+			loudnessAfter: round1(current.lufs),
+			peakDb: round1(Math.min(current.peakDb, -0.2)),
+			clipsAdjusted: changedClips,
+			note: "Every sound moved by the same amount, so the balance is kept; the export limiter keeps peaks under -1 dB. Run it again after changing any volume.",
+		};
+	} catch (error) {
+		progress.fail();
+		throw error;
+	}
+}
+
+export const AUDIO_TOOLS = new Set(["clean_voice", "find_beats", "generate_voiceover", "polish_voice", "master_audio"]);
 
 export async function runAudioTool({ tool, args }: { tool: string; args: Args }): Promise<unknown> {
 	switch (tool) {
@@ -397,6 +577,10 @@ export async function runAudioTool({ tool, args }: { tool: string; args: Args })
 			return findBeats(args);
 		case "generate_voiceover":
 			return generateVoiceover(args);
+		case "polish_voice":
+			return polishVoice(args);
+		case "master_audio":
+			return masterAudio(args);
 		default:
 			throw new Error(`Unknown tool: ${tool}`);
 	}

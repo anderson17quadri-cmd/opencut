@@ -28,6 +28,8 @@ está fazendo.
 | Ferramenta | O que faz | Quando usar | Exemplo |
 |---|---|---|---|
 | `remove_silences` / `find_silences` | Corta as pausas da fala automaticamente (jump cut) | Vídeo falado ficar dinâmico | “Tira todas as pausas” |
+| `remove_fillers` / `find_fillers` | Corta os **“é…”, “hum…”, “ahn…”** (hesitações). Muletas como “tipo” e “né” são só listadas, porque às vezes fazem sentido; o Claude corta as que sobram | Fala mais limpa e rápida | “Tira os ééé e hum” |
+| `detect_scenes` | Acha os **cortes dentro de um vídeo** que já tem várias cenas e, se pedir, separa cada cena em um clipe | Vídeo baixado, compilado, gravação de tela | “Separa as cenas desse vídeo” |
 | `cut_range` | Remove um trecho do vídeo inteiro (tudo se ajusta) | Tirar erro, repetição, trecho ruim | “Corta de 0:12 a 0:15” |
 | `split_clip` / `trim_clip` / `delete_clips` / `move_clip` / `duplicate_clip` | Cortar, aparar, apagar, mover e duplicar clipes | Ajustes finos | “Divide o clipe no 5º segundo” |
 | `set_speed` | Acelera ou deixa em câmera lenta | Efeito de ritmo | “Acelera essa parte 2x” |
@@ -38,8 +40,9 @@ está fazendo.
 | Ferramenta | O que faz | Quando usar | Exemplo |
 |---|---|---|---|
 | `transcribe` | Escreve tudo o que é falado, com o tempo de cada palavra | Base para legenda, cortes e imagens | — |
-| `generate_captions` | Legenda automática. Estilo **karaokê**: a palavra falada acende | Reels/TikTok | “Coloca legenda karaokê amarela” |
+| `generate_captions` | Legenda automática. Estilos prontos (`preset`): **karaoke** (a palavra falada acende em amarelo), **hormozi** (grande, 2 palavras, amarelo/verde, pulando: o visual viral), **box** (caixa roxa atrás da palavra, estilo CapCut), **one_word** (uma palavra gigante por vez), **minimal** (legenda limpa) e **neon** (brilho) | Reels/TikTok | “Legenda estilo Hormozi” |
 | `add_captions` | Legendas que você escreve (ex.: tradução) | Legenda em outro idioma | “Legenda em inglês” |
+| `add_title` | **Títulos animados prontos**: *pop* (palavras pulando), *typewriter* (máquina de escrever), *slide_up* (palavras subindo), *highlight* (marca-texto passando), *glitch* (falha digital) e *stamp* (carimbo que bate com tremida). Cada um já vem com o som certo | Gancho, títulos de seção, números, frases de efeito | “Título ‘3 dicas’ com carimbo” |
 | `add_text` + `set_clip_properties` | Texto na tela com fonte, cor, tamanho, caixa e posição | Títulos simples | “Título ‘Receita fácil’ no topo” |
 
 ## 4. Enquadramento e câmera
@@ -67,9 +70,12 @@ está fazendo.
 
 | Ferramenta | O que faz | Quando usar | Exemplo |
 |---|---|---|---|
-| `search_free_media` + `add_web_image` | Busca **fotos profissionais grátis** (StockSnap, WordPress, Wikimedia) com prévia, e coloca no vídeo como card, tela cheia ou foto simples | Mostrar o que você cita | “Coloca imagens quando eu citar alguma coisa” |
+| `search_free_media` + `add_web_image` | Busca **fotos profissionais grátis** (StockSnap, WordPress, Wikimedia) com prévia, e coloca no vídeo como card, tela cheia ou foto simples. Com `match`, uma **IA confere cada foto** (CLIP) e diz se ela mostra mesmo o que foi falado | Mostrar o que você cita | “Coloca imagens quando eu citar alguma coisa” |
+| **Foto 3D** (`photo3d` em `add_web_image`/`place_image`) | A IA calcula a profundidade da foto e uma “câmera” passa por ela: o que está perto mexe mais que o fundo. **Foto parada vira quase um vídeo** (push = aproxima, pan = de lado, orbit = gira) | B-roll em tela cheia | “Coloca a foto em 3D” |
+| **Foto mais nítida** (`enhance`) | Fotos pequenas mostradas grandes ganham o **dobro de resolução por IA** (Swin2SR). É automático em tela cheia | Fotos que ficariam borradas | — |
 | `place_image` | Mostra uma imagem que já está no projeto | Imagens suas | “Mostra a foto do produto aos 3s” |
-| `search_icons` + `add_icon` | Ícones, emojis, logos de marcas e bandeiras | Destaques rápidos | “Coloca um emoji de fogo” |
+| `add_animated_emoji` / `search_emoji` | **Emojis animados do Google** (~600: 🔥 pegando fogo, 😂 rindo, 🤯 explodindo, ❤️ batendo…) | Reação, piada, número | “Coloca um 🔥 animado quando eu falar isso” |
+| `search_icons` + `add_icon` | Ícones, emojis parados, logos de marcas e bandeiras | Destaques rápidos | “Coloca o logo do Instagram” |
 | `search_animations` + `add_animation` | **Animações de designer** (LottieFiles): confete, setas, emojis animados, botão de seguir, check, transições | Acabamento profissional | “Solta um confete no final” |
 | `add_shape` | Caixas, círculos e barras (fundo para texto) | Destaque de texto | — |
 | `download_media` | Baixa um arquivo de um link direto (vídeo, áudio, imagem) | Você manda um link | “Baixa esse link e coloca no vídeo” |
@@ -87,8 +93,10 @@ está fazendo.
 | Ferramenta | O que faz | Quando usar | Exemplo |
 |---|---|---|---|
 | `clean_voice` | **Limpa a voz com IA** (DeepFilterNet): tira ventilador, rua, ar-condicionado, eco | Gravou com barulho | “Limpa o áudio da minha voz” |
+| `polish_voice` | **Voz de podcast**: tira o grave embolado, dá presença e brilho, e um compressor deixa todas as palavras no mesmo volume | Toda gravação de voz (depois do `clean_voice`) | “Deixa minha voz com som de podcast” |
+| `master_audio` | **Volume final no padrão do Instagram/TikTok/YouTube** (-14 LUFS, medido do mesmo jeito que eles medem). Sobe ou desce tudo junto, sem mudar o equilíbrio entre voz, música e efeitos | Sempre, antes de exportar | “Ajusta o volume final” |
 | `generate_voiceover` | **Narração com voz de IA em português**, gerada no seu PC | Vídeo narrado sem gravar | “Narra esse texto com voz de IA” |
-| `add_sound_effect` | Efeitos sonoros: pop, whoosh, impacto, clique, riser (suspense), ding | Cada animação ganha som | “Coloca um whoosh nas transições” |
+| `add_sound_effect` | Efeitos sonoros. Criados na hora: pop, whoosh, swoosh_down, click, impact (estrondo), riser (suspense), ding. Gravados de verdade (Kenney, domínio público): punch (soco), mouse_click, success (acerto), notification (mensagem), error (erro), glitch, ui_open/ui_close (abrir/fechar) | Cada animação ganha som | “Coloca um soco quando o título aparecer” |
 | `duck_music` | A música **abaixa sozinha quando você fala** | Sempre que tiver música + voz | “A música tá alta, abaixa quando eu falo” |
 | `search_free_media` (música/som) + `download_media` | Música e sons grátis com licença livre | Trilha sonora | “Coloca uma música animada” |
 | `set_volume` / `set_track` | Volume e mudo | Ajustes | “Deixa a música mais baixa” |
@@ -107,30 +115,33 @@ está fazendo.
 Quando você pede um vídeo profissional, ele segue este roteiro:
 
 1. **Entende o vídeo:** vê quadros e transcreve palavra por palavra.
-2. **Som:** limpa a voz se tiver ruído; corta pausas e frases repetidas.
+2. **Som:** limpa a voz se tiver ruído e dá o som de podcast; corta pausas, “é…/hum…” e frases repetidas.
 3. **Formato:** 9:16; se o vídeo for horizontal, reenquadra seguindo o rosto.
-4. **Gancho (primeiros 2 s):** título forte com som de impacto + zoom.
-5. **Ritmo:** algo muda a cada 2–4 s (zoom no rosto, imagem do que você cita, gráfico, ícone); transições nas trocas de assunto.
-6. **Legenda karaokê** no terço de baixo, sem cobrir o rosto.
+4. **Gancho (primeiros 2 s):** título animado forte (carimbo ou pop) com som + zoom.
+5. **Ritmo:** algo muda a cada 2–4 s (zoom no rosto, imagem conferida pela IA do que você cita, foto 3D, título, emoji animado, gráfico); transições nas trocas de assunto.
+6. **Legenda animada** (Hormozi, caixa ou karaokê) no terço de baixo, sem cobrir o rosto.
 7. **1 ou 2 momentos “uau”:** camadas 3D, texto atrás de você, logo na mão.
 8. **Som:** efeito em cada animação; música que abaixa na fala; cortes na batida.
 9. **Cor** levemente mais viva.
 10. **CTA** no final (seguir/comentar) com ding.
-11. **Revisão:** confere os quadros, corrige o que sobrepôs, exporta e te diz onde ficou o vídeo e os créditos.
+11. **Volume final** no padrão das redes (-14 LUFS).
+12. **Revisão:** confere os quadros, corrige o que sobrepôs, exporta e te diz onde ficou o vídeo e os créditos.
 
 ## Pedido pronto para colar
 
 > Edite meu vídeo **[nome do arquivo]** como um editor profissional de Reels:
-> corte as pausas, limpe a voz, zooms no rosto, legenda karaokê, imagens
-> quando eu citar algo, um momento de camadas 3D, transições nas trocas de
-> assunto, efeitos sonoros, música de fundo que abaixa quando eu falo, e CTA
-> no final.
+> corte as pausas e os “é/hum”, limpe a voz e deixe com som de podcast,
+> zooms no rosto, legenda estilo Hormozi, título animado no gancho, imagens
+> (em 3D) quando eu citar algo, emojis animados nas reações, um momento de
+> camadas 3D, transições nas trocas de assunto, efeitos sonoros, música de
+> fundo que abaixa quando eu falo, CTA no final e volume no padrão do
+> Instagram.
 
 ## Primeira vez e internet
 
 Algumas funções baixam um modelo de IA **só na primeira vez** (depois
-funcionam sem internet): legendas, recorte, zoom no rosto, mão, limpeza de voz
-e voz de IA. Buscas de imagens/música/animações precisam de internet sempre.
+funcionam sem internet): legendas, recorte, zoom no rosto, mão, limpeza de voz,
+voz de IA, conferência de fotos, foto 3D e foto mais nítida. Buscas de imagens/música/animações precisam de internet sempre.
 
 ## Atualizações
 

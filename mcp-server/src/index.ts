@@ -28,7 +28,8 @@ Editing:
 - Captions: generate_captions transcribes the audio and adds styled captions on their own track (the first run downloads a speech model, which can take a few minutes). add_captions adds captions you write yourself (e.g. translations). Restyle them all later with set_clip_properties using the captions trackId. fontSize ≈ percent of video height × 0.9 (5 = normal captions, 8 = big social-media captions).
 - Layout: set_clip_properties places any visual clip with anchor (top-left … bottom-right, center) plus margin, or x/y (centre, % of the frame), and sizes it with widthPercent/heightPercent. It also styles text (font, size, colour, bold, background box), opacity, rotation, blend mode.
 - Titles: add_text, then set_clip_properties to style and place it, then animate for motion.
-- Designer animations (animated emojis/icons, arrows pointing, confetti, checkmarks, like/subscribe/follow buttons, lower thirds, transitions): search_animations then add_animation — prefer these over coding the same thing. Icons, emojis, logos and flags (static): search_icons (English keywords) then add_icon. Shapes (boxes, circles, bars behind text): add_shape.
+- Animated titles: add_title (pop, typewriter, slide_up, highlight, glitch, stamp) — one call, with a fitting sound. Animated emojis: add_animated_emoji with the emoji itself (Google's animated set; search_emoji to browse).
+- Designer animations (animated icons, arrows pointing, confetti, checkmarks, like/subscribe/follow buttons, lower thirds, transitions): search_animations then add_animation — prefer these over coding the same thing. Icons, emojis, logos and flags (static): search_icons (English keywords) then add_icon. Shapes (boxes, circles, bars behind text): add_shape.
 - Layers: tracks listed first in get_state are drawn on top. move_layer brings a layer to the front/back or above/below another.
 - Graphics behind the presenter (logos floating behind them, text behind the head, 3D screens in the background, "the scene splits into layers"): run cutout_person on the talking-head clip; motion graphics created before or after it land under the cutout, so they appear between the background and the person. Use move_layer for other clips (icons, text) that should go behind.
 - Motion graphics (animated titles, VS cards, animated explainers/recipes/infographics, counters, 3D objects, floating screens, end cards, anything the built-in tools can't do): write code for create_motion_graphic; iterate with preview_motion_graphic first. Use search_icons ids as images for logos.
@@ -38,22 +39,23 @@ Editing:
 - Music: add_media the audio file, add_to_timeline, set_volume (e.g. -18 dB under speech), animate fade_out at the end.
 - Transitions between shots: add_transition (crossfade, fade_black, slides, zoom), or all=true for every cut.
 - From the internet: when the user asks for music, sound effects, images or b-roll, search_free_media then download_media (it also imports the file). For a link the user gives, download_media directly. YouTube/Instagram/TikTok pages can't be downloaded. Credits are collected automatically into a text file next to the exported video.
-- Pictures for what is being said (automatic b-roll — "put images when I mention something"): 1) transcribe with words=true; 2) pick the concrete references worth illustrating (products, brands, places, people, objects, foods, numbers/events) — usually one every 3-8 s, not every noun; 3) for each, search_free_media type "image" with English keywords: it returns preview pictures, look at them and choose the one that really shows the thing (skip it if none fits); 4) add_web_image with that url, start = the time the word is spoken (≈0.1 s before), duration 2-4 s, style "card" (pop-up photo, anchor "top" on vertical videos so the face stays clear), "fullscreen" (cutaway covering the frame) or "plain"; alternate positions/styles for variety; sound "pop" (cards) or "whoosh" (fullscreen) gives the pro feel; 5) view_frames at a few of those times to check (keep faces and burned-in captions clear). For a logo, prefer search_icons + add_icon. Never write credits on the video: author and licence of everything downloaded are recorded automatically, and export_video writes a "<video> - créditos.txt" file next to the video (creditsFile) that the user can paste into the post caption if they want — tell them where it is.
+- Pictures for what is being said (automatic b-roll — "put images when I mention something"): 1) transcribe with words=true; 2) pick the concrete references worth illustrating (products, brands, places, people, objects, foods, numbers/events) — usually one every 3-8 s, not every noun; 3) for each, search_free_media type "image" with English keywords and match = a plain description of what the picture must show: an AI check orders the results by how well they show it (strong/possible/weak); look at the previews and pick a strong one that really shows the thing (none strong: search again with other words, or skip it); 4) add_web_image with that url, start = the time the word is spoken (≈0.1 s before), duration 2-4 s, style "card" (pop-up photo, anchor "top" on vertical videos so the face stays clear), "fullscreen" (cutaway covering the frame — add photo3d "push" so the still photo moves in 3D like footage; small pictures are sharpened by AI automatically) or "plain"; alternate positions/styles for variety; sound "pop" (cards) or "whoosh" (fullscreen) gives the pro feel; 5) view_frames at a few of those times to check (keep faces and burned-in captions clear). For a logo, prefer search_icons + add_icon. Never write credits on the video: author and licence of everything downloaded are recorded automatically, and export_video writes a "<video> - créditos.txt" file next to the video (creditsFile) that the user can paste into the post caption if they want — tell them where it is.
 
 Editing like a human editor (when the user asks for a professional/viral/"like that video" edit of a talking-head video, do all of this; for smaller asks, pick what fits):
 1. Understand it first: get_state, view_frames at 4-6 times, transcribe words=true. Read the whole script: find the hook, key points, lists, numbers, brand/product/place mentions, reveals, jokes and the call to action.
-2. Sound first: if the voice has background noise (fan, street, hum, echo), clean_voice on the talking-head clip. Clean cut next (it shifts every time after it): remove_silences with tight pacing (minDuration 0.35-0.5, padding 0.08-0.12) and cut_range for false starts or repeated takes you spot in the transcript. Transcribe again afterwards.
+2. Sound first: if the voice has background noise (fan, street, hum, echo), clean_voice on the talking-head clip; then polish_voice (podcast EQ + compressor) on the voice clip. Clean cut next (it shifts every time after it): remove_silences with tight pacing (minDuration 0.35-0.5, padding 0.08-0.12), remove_fillers for the "é…/hum…" hesitations, and cut_range for false starts, repeated takes and crutch words ("tipo", "né") you spot in the transcript. Footage that already has several shots: detect_scenes split=true. Transcribe again afterwards.
 3. Format and framing: set_project 9:16 for Reels/TikTok/Shorts, fill the frame with the talking head, check with view_frames. Horizontal (16:9) footage into a vertical video: auto_reframe (a virtual camera follows the face).
-4. Hook in the first 2 s: a bold animated title (create_motion_graphic) with an impact or whoosh, plus a punch-in on the first sentence.
-5. Keep it moving (at topic/scene changes use add_transition_effect — CrossZoom, GlitchMemories, FilmBurn…; plain cuts elsewhere): something should change every 2-4 s. punch_zoom on emphasis words (style "cut", alternate ~1.12 and ~1.25, return to wide in between; "push" for slow build-ups), pictures at mentions (add_web_image), graphics for lists/numbers/comparisons, icons. Never more than two new things at once, and keep the face clear.
-6. Captions: generate_captions style "karaoke", 2-3 words per caption, in the lower third, clear of the face and graphics.
+4. Hook in the first 2 s: a bold animated title (add_title preset "stamp" or "pop", accentWords on the key word) plus a punch-in on the first sentence.
+5. Keep it moving (at topic/scene changes use add_transition_effect — CrossZoom, GlitchMemories, FilmBurn…; plain cuts elsewhere): something should change every 2-4 s. punch_zoom on emphasis words (style "cut", alternate ~1.12 and ~1.25, return to wide in between; "push" for slow build-ups), pictures at mentions (add_web_image), add_title for key phrases and numbers, an animated emoji on punchlines/reactions (add_animated_emoji, 1-3 per video), graphics for lists/comparisons, icons. Never more than two new things at once, and keep the face clear.
+6. Captions: generate_captions with a preset — "hormozi" (viral talking-head look) or "box" (CapCut look) or "karaoke" — in the lower third, clear of the face and graphics.
 7. One or two signature moments where the script allows (talking about layers, how something is made, a reveal): explode_layers (the scene turns into 3D glass layers with numbered labels), cutout_person + graphics behind the presenter, follow_hand for objects in the hand, 3D motion graphics (floating screens, objects that explode into parts), picture-in-picture next to an animated explainer.
-8. Sound design: every graphic entrance gets a sound (add_sound_effect or the sound option): pop for small pop-ups, whoosh for movement and transitions, impact for big titles/reveals, click for UI and list items, ding for checkmarks/prices/success, riser to build up to a reveal. Sounds around -8 dB. Music: search_free_media type "music" matching the mood, under the whole video, then duck_music so it dips while the person talks. With music, find_beats and put cuts/transitions on bars and zooms, pop-ups and sounds on beats. No voice recorded (a narrated video, an intro/outro)? generate_voiceover makes Portuguese narration from text.
+8. Sound design: every graphic entrance gets a sound (add_sound_effect or the sound option): pop for small pop-ups, whoosh for movement and transitions, impact for big reveals, punch for text slamming in, click/mouse_click for UI and list items, ding/success for checkmarks/prices, notification for message pop-ups, error for a wrong answer, glitch for glitch moments, riser to build up to a reveal. Sounds around -8 dB. Music: search_free_media type "music" matching the mood, under the whole video, then duck_music so it dips while the person talks. With music, find_beats and put cuts/transitions on bars and zooms, pop-ups and sounds on beats. No voice recorded (a narrated video, an intro/outro)? generate_voiceover makes Portuguese narration from text.
 9. Look: a light grade on the talking head (add_effect colour adjustment: a bit more contrast and saturation, slight vignette).
 10. End with a call-to-action graphic in the last 2-3 s (follow/save/comment) with a ding.
-11. Review like an editor: view_frames at every element you added and at a few random times; fix overlaps (captions vs graphics vs face), bad timing and anything cut off; then export_video. Tell the user, briefly, the edit decisions you made and where the file and credits are.
+11. Loudness: master_audio (-14 LUFS, the social-media standard) once all sound is final.
+12. Review like an editor: view_frames at every element you added and at a few random times; fix overlaps (captions vs graphics vs face), bad timing and anything cut off; then export_video. Tell the user, briefly, the edit decisions you made and where the file and credits are.
 
-Order matters: timing edits (cuts, speed) → punch_zoom → colour grade → cutout_person → graphics, pictures, hand-tracked objects → explode_layers (it bakes the frame as it looks then, so do it after the zooms under it) → captions → sounds and music (duck_music last, once the timing is final) → review → export.
+Order matters: timing edits (cuts, speed) → punch_zoom → colour grade → cutout_person → graphics, pictures, hand-tracked objects → explode_layers (it bakes the frame as it looks then, so do it after the zooms under it) → captions → sounds and music (duck_music once the timing is final) → master_audio → review → export.
 
 Slow operations (export, transcription, captions, silence removal, downloads, motion graphics, cutouts, 3D layers, frame previews) may answer \"still working\" with a taskId: call check_task with it until you get the result.
 
@@ -253,7 +255,7 @@ function previewsToImages(result: ToolResult): ToolResult {
 	};
 }
 
-const VERSION = "0.9.0";
+const VERSION = "0.10.0";
 
 const server = new McpServer(
 	{ name: "opencut", version: VERSION },
@@ -261,6 +263,10 @@ const server = new McpServer(
 );
 
 const clipId = z.string().describe("Clip id from get_state");
+
+/** Sound effects: the first seven are synthesized, the rest are recordings (Kenney, CC0). */
+const soundEffect = z.enum(["pop", "whoosh", "swoosh_down", "click", "impact", "riser", "ding", "punch", "mouse_click", "success", "notification", "error", "glitch", "ui_open", "ui_close"]);
+const soundOption = z.enum([...soundEffect.options, "none"]);
 
 server.registerTool(
 	"get_state",
@@ -596,6 +602,10 @@ server.registerTool(
 		inputSchema: {
 			language: languageSchema,
 			style: z.enum(["classic", "karaoke"]).optional(),
+			preset: z
+				.enum(["karaoke", "hormozi", "box", "one_word", "minimal", "neon"])
+				.optional()
+				.describe('Word-by-word caption look (implies style karaoke): "karaoke" (spoken word yellow, pops), "hormozi" (big, 2 words, yellow/green alternating, bouncy — viral talking-head look), "box" (a purple box slides behind the spoken word, CapCut style), "one_word" (one huge word at a time), "minimal" (clean sentence-case subtitles on a dark box), "neon" (glowing cyan). Your colour/font/size options override the preset'),
 			highlightColor: hex.optional().describe("karaoke: colour of the spoken word (default yellow)"),
 			wordsPerCaption: z.number().int().min(1).max(20).optional().describe("Words per caption (default 3); 1-3 for fast social captions"),
 			...captionStyle,
@@ -848,6 +858,10 @@ server.registerTool(
 			limit: z.number().int().min(1).max(30).optional(),
 			commercialUse: z.boolean().optional().describe("false to include non-commercial licenses too"),
 			previews: z.boolean().optional().describe("Images only; default true: include preview pictures"),
+			match: z
+				.string()
+				.optional()
+				.describe('Images only: a plain English description of what the picture must show (e.g. "a red Ferrari on a road", "a bowl of açaí"). An AI image check (CLIP) scores every result against it and orders them best first, each marked strong/possible/weak — use a strong one; if none is, search again with other keywords'),
 		},
 	},
 	(args) => callSearchWithPreviews(args),
@@ -887,7 +901,16 @@ const placementInputs = {
 	label: z.string().max(80).optional().describe("Short caption under the picture"),
 	font: z.string().optional().describe("Google Font for the label, default Montserrat"),
 	kenBurns: z.boolean().optional().describe("Slow zoom while on screen, default true"),
-	sound: z.enum(["pop", "whoosh", "swoosh_down", "click", "impact", "riser", "ding", "none"]).optional().describe("Sound effect when it appears (made on the spot, no licence needed); default none"),
+	sound: soundOption.optional().describe("Sound effect when it appears (no licence needed); default none"),
+	photo3d: z
+		.enum(["push", "pan", "orbit"])
+		.optional()
+		.describe('3D photo: AI estimates the picture\'s depth and a virtual camera glides through it (near things move more than far ones) — "push" slow push-in (default choice), "pan" sideways, "orbit" circles. Makes a still photo feel like footage; great for fullscreen b-roll. Replaces kenBurns'),
+	strength3d: z.number().min(0.3).max(2.5).optional().describe("3D motion amount (default 1)"),
+	enhance: z
+		.boolean()
+		.optional()
+		.describe("AI upscaling (Swin2SR, 2×) before placing. Default: automatic for fullscreen pictures that would be enlarged over 1.4×; true forces it, false skips it"),
 	behindPerson: z.boolean().optional().describe("Put it under a cutout_person layer (behind the presenter)"),
 };
 
@@ -1046,7 +1069,7 @@ server.registerTool(
 				.describe("Cover the whole frame, cropping the edges — only for animations made full-frame (transitions, backgrounds). For confetti, emojis, icons use widthPercent (100 = full width, nothing cropped)"),
 			fade: z.number().min(0).max(2).optional().describe("Fade in/out seconds (default 0)"),
 			behindPerson: z.boolean().optional().describe("Under a cutout_person layer"),
-			sound: z.enum(["pop", "whoosh", "swoosh_down", "click", "impact", "riser", "ding", "none"]).optional(),
+			sound: soundOption.optional(),
 			name: z.string().optional(),
 		},
 	},
@@ -1112,9 +1135,9 @@ server.registerTool(
 	{
 		title: "Add a sound effect",
 		description:
-			"Put a sound effect on the audio layer, timed so it lands at 'at' (made on the spot, no download or licence): pop (small pop-ups), whoosh (movement, transitions), swoosh_down (things leaving), click (UI, list items), impact (big title, reveal), riser (builds up and ends at 'at'), ding (check, price, success).",
+			"Put a sound effect on the audio layer, timed so it lands at 'at' (no download or licence). Synthesized: pop (small pop-ups), whoosh (movement, transitions), swoosh_down (things leaving), click (UI, list items), impact (big cinematic boom for reveals), riser (builds up and ends at 'at'), ding (check, price, success). Recorded (Kenney, CC0): punch (a hit — text slamming in, a strong claim), mouse_click (screen demos, a cursor clicking), success (a short positive chime), notification (a message/alert pop-up), error (a wrong answer, an X), glitch (a digital stutter — glitch text/transitions), ui_open / ui_close (a panel or card opening/closing).",
 		inputSchema: {
-			effect: z.enum(["pop", "whoosh", "swoosh_down", "click", "impact", "riser", "ding"]),
+			effect: soundEffect,
 			at: z.number().min(0).optional().describe("Timeline seconds of the visual moment; default the playhead"),
 			volumeDb: z.number().min(-40).max(6).optional().describe("Default 0; around -8 sits well under a voice"),
 		},
@@ -1217,6 +1240,142 @@ server.registerTool(
 		},
 	},
 	(args) => callOpenCut("clean_voice", args),
+);
+
+server.registerTool(
+	"add_title",
+	{
+		title: "Animated title (kinetic typography)",
+		description:
+			'A polished animated title in one call, like a motion designer\'s preset: "pop" (words pop in one after another, bouncy), "typewriter" (letters typed with a cursor), "slide_up" (words rise from an invisible line), "highlight" (a marker sweeps behind the accent words, or all of them), "glitch" (RGB-split digital glitch in and out), "stamp" (slams in from big with a shake — for a hook or a strong claim). Each gets a fitting sound unless sound "none". Use it for hooks, section titles, numbers and key phrases; use create_motion_graphic only for layouts these can\'t do.',
+		inputSchema: {
+			text: z.string().min(1).max(140),
+			preset: z.enum(["pop", "typewriter", "slide_up", "highlight", "glitch", "stamp"]).optional().describe("Default pop"),
+			start: z.number().min(0).optional().describe("Timeline seconds; default the playhead"),
+			duration: z.number().min(0.8).max(20).optional().describe("Default 2.5"),
+			position: z.enum(["top", "center", "bottom"]).optional().describe("Default top (keeps the face clear on talking heads)"),
+			y: z.number().min(0).max(100).optional().describe("Vertical centre, % of the frame (overrides position)"),
+			subtitle: z.string().max(100).optional().describe("Smaller line under the title"),
+			accentWords: z.array(z.string()).max(10).optional().describe("Words drawn in the accent colour (highlight: the words marked)"),
+			accentColor: hex.optional().describe("Default #ffd400 (yellow)"),
+			color: hex.optional().describe("Default white"),
+			box: hex.optional().describe("Colour of a rounded box behind each line (default none: outlined text)"),
+			font: z.string().optional().describe("Google Font, default Montserrat (e.g. Anton, Bebas Neue, Poppins)"),
+			size: z.number().min(2).max(20).optional().describe("Letter height, % of the frame height (default 6.5)"),
+			uppercase: z.boolean().optional().describe("Default true"),
+			outline: z.boolean().optional().describe("Black outline (default true)"),
+			sound: soundOption.optional().describe("Default fits the preset (pop→pop, slide_up→whoosh, highlight→swoosh_down, glitch→glitch, stamp→punch, typewriter→none)"),
+			behindPerson: z.boolean().optional().describe("Under a cutout_person layer (text behind the presenter)"),
+		},
+	},
+	(args) => callOpenCut("add_title", args),
+);
+
+server.registerTool(
+	"search_emoji",
+	{
+		title: "Search animated emojis",
+		description:
+			"Search Google's Noto Animated Emoji (~600 emojis animated by Google's designers: 🔥 burning, 😂 laughing, 🤯 exploding, ❤️ beating, 👏 clapping, 🚀 launching…) by English words. Then add_animated_emoji. You can also pass an emoji character straight to add_animated_emoji.",
+		inputSchema: {
+			query: z.string().min(1).describe('English words, e.g. "fire", "laugh", "money", "mind blown"'),
+			limit: z.number().int().min(1).max(50).optional(),
+		},
+	},
+	(args) => callOpenCut("search_emoji", args),
+);
+
+server.registerTool(
+	"add_animated_emoji",
+	{
+		title: "Add an animated emoji",
+		description:
+			"Show one of Google's animated emojis (Noto Animated Emoji, CC BY 4.0 — credited automatically in the credits file) over the video: pass the emoji itself (\"🔥\") or its name (\"fire\"). Loops for 2.5 s at 22% of the frame width by default. Great next to a punchline, a reaction or a number.",
+		inputSchema: {
+			emoji: z.string().min(1).describe('The emoji character (e.g. "🔥") or its English name'),
+			start: z.number().min(0).optional().describe("Timeline seconds; default the playhead"),
+			duration: z.number().min(0.3).max(30).optional().describe("Default 2.5"),
+			anchor: z
+				.enum(["center", "top", "bottom", "left", "right", "top-left", "top-right", "bottom-left", "bottom-right"])
+				.optional(),
+			widthPercent: z.number().min(3).max(100).optional().describe("Default 22"),
+			x: z.number().min(0).max(100).optional(),
+			y: z.number().min(0).max(100).optional(),
+			loop: z.boolean().optional().describe("Default true"),
+			fade: z.number().min(0).max(2).optional(),
+			sound: soundOption.optional(),
+			behindPerson: z.boolean().optional(),
+		},
+	},
+	(args) => callOpenCut("add_animated_emoji", args),
+);
+
+server.registerTool(
+	"polish_voice",
+	{
+		title: "Podcast voice (EQ + compressor)",
+		description:
+			"Give a recorded voice the processed \"podcast\" sound editors use: rumble cut, less boom and mud, more presence and air, and a compressor that evens out loud and soft words, set to a steady loudness. Replaces the clip's sound with the treated copy in exact sync (the original is muted). Run it after clean_voice (on the clean voice clip it made), before music. strength light/medium/strong.",
+		inputSchema: {
+			clipId: z.string().describe("Video or audio clip with the voice (the clean_voice clip if you cleaned it)"),
+			strength: z.enum(["light", "medium", "strong"]).optional(),
+		},
+	},
+	(args) => callOpenCut("polish_voice", args),
+);
+
+server.registerTool(
+	"master_audio",
+	{
+		title: "Final loudness for social media",
+		description:
+			"Set the whole video's loudness to what Instagram/TikTok/YouTube expect (-14 LUFS, measured the way they do, ITU-R BS.1770): measures the full mix and moves every sound by the same amount, so the balance between voice, music and effects is kept; peaks stay under -1 dB. Run it last, right before export_video, after all sound and music changes.",
+		inputSchema: {
+			targetLufs: z.number().min(-24).max(-9).optional().describe("Default -14 (social media); -16 for podcasts/Spotify video, -23 for TV"),
+		},
+	},
+	(args) => callOpenCut("master_audio", args),
+);
+
+server.registerTool(
+	"find_fillers",
+	{
+		title: "Find filler words and hesitations",
+		description:
+			'Find "é…", "hum…", "ahn…" hesitations (filler words Whisper wrote down, and sustained voiced sounds between words that Whisper skipped — steady level and pitch, unlike speech) and crutch words ("tipo", "né", "então", "basicamente"…). Returns each with its time and kind: filler, hesitation or crutch. Nothing is cut.',
+		inputSchema: { language: languageSchema },
+	},
+	(args) => callOpenCut("find_fillers", args),
+);
+
+server.registerTool(
+	"remove_fillers",
+	{
+		title: "Cut filler words and hesitations",
+		description:
+			'Cut the "é…/hum…/ahn…" hesitations out of the whole video (like remove_silences, later clips move left). By default only kinds filler and hesitation; crutch words ("tipo", "né"…) are reported but kept, since they are often meant — cut those yourself with cut_range where they are clearly filler. Run after remove_silences, then transcribe again.',
+		inputSchema: {
+			language: languageSchema,
+			kinds: z.array(z.enum(["filler", "hesitation", "crutch"])).optional().describe("Default [filler, hesitation]"),
+		},
+	},
+	(args) => callOpenCut("remove_fillers", args),
+);
+
+server.registerTool(
+	"detect_scenes",
+	{
+		title: "Find the cuts inside a clip",
+		description:
+			"Find the shot changes inside a video clip that already contains several shots (a downloaded video, a screen recording with cuts, a compilation) with PySceneDetect's content detector (hue/saturation/brightness change between frames). Returns the cut times and scenes; split=true also splits the clip at every cut so each shot can be trimmed, reordered or get a transition.",
+		inputSchema: {
+			clipId: z.string(),
+			split: z.boolean().optional().describe("Split the clip at each cut (default false)"),
+			threshold: z.number().min(5).max(100).optional().describe("Sensitivity: lower finds more cuts (default 27)"),
+			minSceneSeconds: z.number().min(0.2).max(10).optional().describe("Shortest shot (default 0.6 s)"),
+		},
+	},
+	(args) => callOpenCut("detect_scenes", args),
 );
 
 server.registerTool(

@@ -61,7 +61,7 @@ import { renderMotionGraphicClip, runGraphicsTool } from "./graphics-tools";
 import { AUDIO_TOOLS, runAudioTool } from "./audio-tools";
 import { TRANSITION_TOOLS, runTransitionTool } from "./gl-transitions";
 import { HUMAN_TOOLS, runHumanTool } from "./human-tools";
-import { type KaraokeStyle, groupWords, karaokeCode } from "./karaoke";
+import { CAPTION_PRESETS, CAPTION_PRESET_STYLES, type CaptionPreset, type KaraokeStyle, groupWords, karaokeCode } from "./karaoke";
 import { createHandLandmarker, videoFrames } from "./vision";
 import {
 	ANCHORS,
@@ -655,7 +655,16 @@ function languageArg(args: Args) {
 	return known.code;
 }
 
-async function transcribeTimeline(
+/** Transcriptions run one at a time: the speech model can't take two at once. */
+let transcriptionQueue: Promise<unknown> = Promise.resolve();
+
+function transcribeTimeline(args: Args, options: { words?: boolean } = {}): Promise<TranscriptionSegment[]> {
+	const run = transcriptionQueue.then(() => transcribeTimelineNow(args, options));
+	transcriptionQueue = run.catch(() => {});
+	return run;
+}
+
+async function transcribeTimelineNow(
 	args: Args,
 	{ words = false }: { words?: boolean } = {},
 ): Promise<TranscriptionSegment[]> {
@@ -743,7 +752,9 @@ async function insertCaptions(args: Args, cues: SubtitleCue[]) {
 }
 
 async function generateCaptions(args: Args) {
-	if (args.style === "karaoke") return generateKaraokeCaptions(args);
+	if (args.style === "karaoke" || (CAPTION_PRESETS as readonly string[]).includes(args.preset as string)) {
+		return generateKaraokeCaptions(args);
+	}
 	const segments = await transcribeTimeline(args);
 	const wordsPerCaption = optNum(args, "wordsPerCaption");
 	const chunks = buildCaptionChunks({
@@ -766,26 +777,39 @@ async function generateKaraokeCaptions(args: Args) {
 	if (words.length === 0) throw new Error("No speech was found to caption.");
 
 	const { width, height } = project.settings.canvasSize;
+	const preset: CaptionPreset = (CAPTION_PRESETS as readonly string[]).includes(args.preset as string)
+		? (args.preset as CaptionPreset)
+		: "karaoke";
+	const look = CAPTION_PRESET_STYLES[preset];
 	const groups = groupWords({
 		words,
-		wordsPerCaption: Math.max(1, Math.round(optNum(args, "wordsPerCaption") ?? 3)),
+		wordsPerCaption: Math.max(1, Math.round(optNum(args, "wordsPerCaption") ?? look.wordsPerCaption)),
 	});
 	const position = opt(args, "position", isString) ?? "bottom";
 	const background = opt(args, "background", isString);
-	const fontFamily = opt(args, "fontFamily", isString) ?? "Montserrat";
+	const fontFamily = opt(args, "fontFamily", isString) ?? look.font;
 	const start = Math.max(0, groups[0].start - 0.05);
 	const end = groups[groups.length - 1].end;
+	const highlight = opt(args, "highlightColor", isString);
+	const bold = opt(args, "bold", isBool);
 	const style: KaraokeStyle = {
 		fontFamily,
-		fontWeight: opt(args, "bold", isBool) === false ? 600 : 900,
-		fontSize: ((optNum(args, "fontSize") ?? 6) * height) / 90,
+		fontWeight: bold === false ? 600 : bold === true ? 900 : (look.fontWeight ?? 900),
+		fontSize: ((optNum(args, "fontSize") ?? look.fontSizePercent) * height) / 90,
 		color: hexColor(opt(args, "color", isString) ?? "#ffffff"),
-		highlightColor: hexColor(opt(args, "highlightColor", isString) ?? "#ffd400"),
-		upcomingOpacity: 0.55,
-		boxColor: background && background !== "none" ? hexColor(background) : null,
+		highlightColor: hexColor(highlight ?? look.highlightColor ?? "#ffd400"),
+		upcomingOpacity: look.upcomingOpacity ?? 0.55,
+		boxColor:
+			background && background !== "none" ? hexColor(background) : background === "none" ? null : (look.boxColor ?? null),
 		y: position === "top" ? 0.2 : position === "middle" ? 0.5 : 0.78,
-		uppercase: opt(args, "uppercase", isBool) ?? true,
+		uppercase: opt(args, "uppercase", isBool) ?? look.uppercase ?? true,
 		maxWidth: 0.86,
+		highlightMode: look.highlightMode ?? "color",
+		pop: look.pop ?? 0.12,
+		outline: look.outline ?? true,
+		glow: look.glow ?? false,
+		// An explicit highlight colour replaces the alternating ones.
+		alternateColors: highlight ? null : (look.alternateColors ?? null),
 	};
 	const clip = await renderMotionGraphicClip({
 		spec: {
@@ -803,6 +827,7 @@ async function generateKaraokeCaptions(args: Args) {
 	return {
 		...clip,
 		style: "karaoke",
+		preset,
 		captions: groups.map((g) => ({
 			start: round2(g.start),
 			end: round2(g.end),
@@ -1376,6 +1401,130 @@ async function removeSilences(args: Args) {
 }
 
 
+// ----------------------------------------------------------- filler words
+
+/** Hesitation sounds, cut automatically (pt + en spellings Whisper uses). */
+const FILLER_WORDS = new Set([
+	"é", "éé", "ééé", "eh", "éh", "ehh", "ah", "ahh", "ahn", "ã", "ãh", "hã", "an", "hum", "humm", "hm", "hmm", "mm", "uh", "uhm", "um", "umm", "er", "erm",
+]);
+/** Crutch words: only reported, since they are sometimes meant. */
+const CRUTCH_WORDS = new Set([
+	"tipo", "né", "então", "assim", "basicamente", "literalmente", "sabe", "entendeu", "enfim", "like", "basically", "literally", "actually",
+]);
+
+type FillerCandidate = { start: number; end: number; kind: "filler" | "hesitation" | "crutch"; text: string };
+
+/**
+ * Finds "é…", "hum…", "ahn…": filler words Whisper wrote down, and
+ * sustained voiced sounds between transcribed words that Whisper skipped
+ * (it usually drops hesitations) — steady level and pitch, unlike speech.
+ * Crutch words ("tipo", "né"…) are listed separately.
+ */
+async function findFillers(args: Args): Promise<{ candidates: FillerCandidate[] }> {
+	requireOpenProject();
+	const e = editor();
+	const words = (await transcribeTimeline(args, { words: true }))
+		.map((w) => ({ text: w.text.trim(), start: w.start, end: w.end }))
+		.filter((w) => w.text);
+	const audioBlob = await extractTimelineAudio({
+		tracks: tracks(),
+		mediaAssets: e.media.getAssets(),
+		totalDuration: e.timeline.getTotalDuration(),
+	});
+	const sampleRate = 16000;
+	const { samples } = await decodeAudioToFloat32({ audioBlob, sampleRate });
+
+	// 20 ms frames: level (dB) and periodicity (normalised autocorrelation
+	// in the voice pitch range, 70-400 Hz).
+	const hop = 320;
+	const frame = 640;
+	const levels: number[] = [];
+	const voiced: boolean[] = [];
+	for (let i = 0; i + frame <= samples.length; i += hop) {
+		let energy = 0;
+		for (let j = i; j < i + frame; j++) energy += samples[j] * samples[j];
+		levels.push(10 * Math.log10(energy / frame + 1e-12));
+		let best = 0;
+		for (let lag = 40; lag <= 228; lag += 2) {
+			let sum = 0;
+			let a = 0;
+			let b = 0;
+			for (let j = i; j + lag < i + frame; j += 2) {
+				sum += samples[j] * samples[j + lag];
+				a += samples[j] * samples[j];
+				b += samples[j + lag] * samples[j + lag];
+			}
+			const r = sum / Math.sqrt(a * b + 1e-12);
+			if (r > best) best = r;
+		}
+		voiced.push(best > 0.6);
+	}
+	const peak = Math.max(...levels, -120);
+	const threshold = Math.min(Math.max(peak - 30, -52), -30);
+	const frameSeconds = hop / sampleRate;
+
+	const normalize = (text: string) => text.toLowerCase().replace(/[.,!?…;:"“”]/g, "").trim();
+	const candidates: FillerCandidate[] = [];
+	for (const word of words) {
+		const text = normalize(word.text);
+		if (FILLER_WORDS.has(text)) candidates.push({ start: word.start, end: word.end, kind: "filler", text: word.text });
+		else if (CRUTCH_WORDS.has(text)) candidates.push({ start: word.start, end: word.end, kind: "crutch", text: word.text });
+	}
+	// Voiced runs in the gaps between transcribed words.
+	const edges = [{ end: 0 }, ...words, { start: samples.length / sampleRate }] as Array<{ start?: number; end?: number }>;
+	for (let k = 0; k + 1 < edges.length; k++) {
+		// Whisper's word edges are approximate: a little margin on each side.
+		const gapStart = (edges[k].end ?? 0) + 0.05;
+		const gapEnd = (edges[k + 1].start ?? 0) - 0.03;
+		if (gapEnd - gapStart < 0.3) continue;
+		const from = Math.ceil(gapStart / frameSeconds);
+		const to = Math.min(levels.length, Math.floor(gapEnd / frameSeconds));
+		let runStart = -1;
+		for (let f = from; f <= to; f++) {
+			const on = f < to && levels[f] > threshold;
+			if (on && runStart < 0) runStart = f;
+			if (!on && runStart >= 0) {
+				const run = levels.slice(runStart, f);
+				const seconds = (f - runStart) * frameSeconds;
+				const mean = run.reduce((a, b) => a + b, 0) / run.length;
+				const spread = Math.sqrt(run.reduce((a, b) => a + (b - mean) ** 2, 0) / run.length);
+				const voicedShare = voiced.slice(runStart, f).filter(Boolean).length / run.length;
+				if (seconds >= 0.25 && seconds <= 2.5 && voicedShare >= 0.6 && spread < 5) {
+					candidates.push({ start: runStart * frameSeconds, end: f * frameSeconds, kind: "hesitation", text: "(é…/hum…)" });
+				}
+				runStart = -1;
+			}
+		}
+	}
+	candidates.sort((a, b) => a.start - b.start);
+	return {
+		candidates: candidates.map((c) => ({ ...c, start: round2(c.start), end: round2(c.end) })),
+	};
+}
+
+async function removeFillers(args: Args) {
+	const kinds = new Set(
+		Array.isArray(args.kinds) && args.kinds.length ? (args.kinds as string[]) : ["filler", "hesitation"],
+	);
+	const { candidates } = await findFillers(args);
+	const cuts = candidates.filter((c) => kinds.has(c.kind));
+	if (cuts.length === 0) return { removed: 0, candidates };
+	// A hair inside each sound so the words around it stay whole.
+	const ranges = cuts.map((c) => ({ start: c.start + 0.02, end: c.end - 0.02 })).filter((r) => r.end - r.start > 0.08);
+	await asOneStep(() => {
+		for (const range of [...ranges].reverse()) cutRangeInPlace(range.start, range.end);
+	});
+	return {
+		removed: ranges.length,
+		removedSeconds: round2(ranges.reduce((total, r) => total + (r.end - r.start), 0)),
+		cut: cuts,
+		keptCrutchWords: candidates.filter((c) => c.kind === "crutch" && !kinds.has("crutch")),
+		durationSeconds: toSeconds(editor().timeline.getTotalDuration()),
+		note: "Times shifted after the cuts: transcribe again before timing anything else.",
+	};
+}
+
+
 // ------------------------------------------------------------- transitions
 
 const TRANSITIONS = [
@@ -1870,6 +2019,10 @@ export async function runProTool({
 			return findSilenceRanges(args);
 		case "remove_silences":
 			return removeSilences(args);
+		case "find_fillers":
+			return findFillers(args);
+		case "remove_fillers":
+			return removeFillers(args);
 		case "add_transition":
 			return addTransition(args);
 		case "move_layer":

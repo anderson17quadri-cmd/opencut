@@ -31,19 +31,22 @@ The extension is a small stdio MCP server. Each tool is a POST to
 it to the open window (see `opencut-classic/apps/web/src/agent`). Nothing
 leaves the computer.
 
-Tools (63), roughly what a professional editor does:
+Tools (71), roughly what a professional editor does:
 
 - **Project**: `get_state`, `list_projects`, `create_project`, `open_project`,
   `set_project` (9:16 / 16:9 / 1:1 / 4:5…, fps, colour or blurred background).
 - **Media**: `list_media_files`, `add_media`, `add_to_timeline`.
 - **Cutting**: `split_clip`, `trim_clip`, `delete_clips`, `move_clip`,
   `duplicate_clip`, `cut_range` (ripple delete across all tracks),
-  `find_silences` / `remove_silences` (jump cuts).
+  `find_silences` / `remove_silences` (jump cuts), `find_fillers` /
+  `remove_fillers` ("é…/hum…" hesitations, crutch words listed),
+  `detect_scenes` (PySceneDetect's content detector; can split the clip).
 - **Look at the result**: `view_frames` returns rendered frames as images.
 - **Text and captions**: `add_text`, `transcribe` (per segment or per
   word), `generate_captions` (on-device Whisper). Styles: classic text
-  clips, or karaoke, where the spoken word lights up. Plus
-  `add_captions`.
+  clips, or word-by-word presets (karaoke, hormozi, box, one_word,
+  minimal, neon). Plus `add_captions` and `add_title` (kinetic titles: pop,
+  typewriter, slide_up, highlight, glitch, stamp).
 - **Layout and style**: `set_clip_properties` (anchor/position/size in % of
   the frame, text font/colour/box, opacity, rotation, blend mode, volume).
 - **Graphics**: `search_icons` + `add_icon` (Iconify: icons, emojis, logos,
@@ -70,8 +73,17 @@ Tools (63), roughly what a professional editor does:
   background with the person painted out — with numbered labels, then
   folds back seamlessly), `punch_zoom` (cut/smooth/push zooms that keep
   the face framed, via on-device face detection), `add_sound_effect`
-  (pop, whoosh, swoosh, click, impact, riser, ding — synthesized locally,
-  no licence), `duck_music` (music dips automatically under speech).
+  (pop, whoosh, swoosh, click, impact, riser, ding synthesized locally;
+  punch, mouse_click, success, notification, error, glitch, ui_open/close
+  recorded, Kenney CC0), `duck_music` (music dips automatically under
+  speech), `polish_voice` (podcast EQ + compressor), `master_audio` (whole
+  mix to -14 LUFS, ITU-R BS.1770).
+- **Image AI** (transformers.js, in the window): `search_free_media` with
+  `match` ranks pictures by CLIP similarity; `photo3d` on pictures
+  (Depth Anything V2 depth + parallax shader); automatic 2× upscaling of
+  small full-screen pictures (Swin2SR).
+- **Animated emojis**: `search_emoji` + `add_animated_emoji` (Google's Noto
+  Animated Emoji, CC BY 4.0, credited automatically).
 - **Open-source engines**: `clean_voice` (DeepFilterNet 3 noise
   suppression, in sync, original muted), `find_beats` (tempo and beat
   grid with web-audio-beat-detector), `add_transition_effect` /

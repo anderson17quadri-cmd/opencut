@@ -300,7 +300,7 @@ const MAX_AUTO_FRAME_MS = 350;
 
 let webgpuCheck: Promise<boolean> | null = null;
 /** Whether a WebGPU adapter is available (cached). */
-function hasWebGPU(): Promise<boolean> {
+export function hasWebGPU(): Promise<boolean> {
 	webgpuCheck ??= (async () => {
 		type Adapter = { isFallbackAdapter?: boolean; info?: { isFallbackAdapter?: boolean } };
 		const gpu = (navigator as { gpu?: { requestAdapter(): Promise<Adapter | null> } }).gpu;
