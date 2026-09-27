@@ -12,6 +12,19 @@ está fazendo.
 
 ---
 
+## ⭐ Estilos prontos (as "skills")
+
+O jeito mais fácil de ter uma edição bonita é pedir um **estilo pronto**. O Claude segue um guia de diretor, passo a passo, em vez de inventar.
+
+| Estilo | Como é | Como pedir |
+|---|---|---|
+| **Cinematográfico** | Elegante, estilo "tech reel" de criador grande: **cor de cinema** (sem recorte), **legenda pequena e discreta**, **logos 3D brilhando na sua mão**, zooms suaves, música calma. Poucos efeitos, todos marcantes. Nada de emoji, foto aleatória ou legenda gigante | No Claude Desktop, clique em **+** → **OpenCut** → **"Editar no estilo cinematográfico"** e escreva o nome do vídeo. Ou escreva: *"edita o vídeo X no estilo cinematográfico"* |
+| **Reels viral** | Rápido e chamativo: zoom a cada frase, legenda estilo Hormozi, títulos, emojis animados, efeitos sonoros | **+** → **OpenCut** → **"Editar Reels dinâmico (viral)"** |
+
+**Skill para o Claude Desktop (opcional):** o arquivo `skills/editor-cinematografico.zip` pode ser instalado em **Configurações → Capacidades → Skills → Enviar skill**. Assim o Claude usa o estilo cinematográfico sempre que você pedir um vídeo "bonito" ou "profissional".
+
+---
+
 ## 1. Projeto e arquivos
 
 | Ferramenta | O que faz | Quando usar | Exemplo de pedido |
@@ -40,7 +53,7 @@ está fazendo.
 | Ferramenta | O que faz | Quando usar | Exemplo |
 |---|---|---|---|
 | `transcribe` | Escreve tudo o que é falado, com o tempo de cada palavra | Base para legenda, cortes e imagens | — |
-| `generate_captions` | Legenda automática. Estilos prontos (`preset`): **karaoke** (a palavra falada acende em amarelo), **hormozi** (grande, 2 palavras, amarelo/verde, pulando: o visual viral), **box** (caixa roxa atrás da palavra, estilo CapCut), **one_word** (uma palavra gigante por vez), **minimal** (legenda limpa) e **neon** (brilho) | Reels/TikTok | “Legenda estilo Hormozi” |
+| `generate_captions` | Legenda automática. Estilos prontos (`preset`): **karaoke** (a palavra falada acende em amarelo), **hormozi** (grande, 2 palavras, amarelo/verde, pulando: o visual viral), **box** (caixa roxa atrás da palavra, estilo CapCut), **one_word** (uma palavra gigante por vez), **minimal** (legenda limpa) **neon** (brilho) e **cinematic** (pequena e elegante, embaixo, estilo dos criadores de tecnologia) | Reels/TikTok | “Legenda estilo Hormozi” |
 | `add_captions` | Legendas que você escreve (ex.: tradução) | Legenda em outro idioma | “Legenda em inglês” |
 | `add_title` | **Títulos animados prontos**: *pop* (palavras pulando), *typewriter* (máquina de escrever), *slide_up* (palavras subindo), *highlight* (marca-texto passando), *glitch* (falha digital) e *stamp* (carimbo que bate com tremida). Cada um já vem com o som certo | Gancho, títulos de seção, números, frases de efeito | “Título ‘3 dicas’ com carimbo” |
 | `add_text` + `set_clip_properties` | Texto na tela com fonte, cor, tamanho, caixa e posição | Títulos simples | “Título ‘Receita fácil’ no topo” |
@@ -64,6 +77,8 @@ está fazendo.
 | `follow_hand` | Um objeto/logo **fica flutuando na sua mão** e segue o movimento | Mostrar produto/marca | “Coloca o logo do Instagram na minha mão” |
 | `move_layer` | Muda o que fica na frente ou atrás | Organizar camadas | “Manda esse texto pra trás” |
 | `create_motion_graphic` / `preview_motion_graphic` | Gráficos animados feitos em código: títulos, cards “VS”, listas, receitas, contadores, objetos 3D, telas flutuantes, CTA | Qualquer animação personalizada | “Faz um card VS entre iPhone e Samsung” |
+| `apply_look` | **Filtros de cor de cinema** (LUTs, como no DaVinci): *noturno* (escuro e elegante, a parede branca fica cinza e você em destaque), *cinema* (teal & orange), *filme* (quente, cara de película), *limpo* (claro, estilo YouTube), *neon* (roxo e ciano), *pb* (preto e branco de filme). Aceita também **qualquer arquivo .cube** que você baixar. Só pinta o vídeo, não os títulos | Toda edição | “Coloca o filtro noturno” |
+| `add_3d_logo` | **Logo em 3D de verdade** (Claude, ChatGPT, Gemini, Apple…): com volume, brilho metálico e girando, **flutuando na sua mão** e seguindo o movimento | Quando você cita uma marca | “Coloca o logo do Claude na minha mão” |
 | `add_effect` / `update_effect` / `list_effects` | Cor (brilho, contraste, saturação, temperatura), preto e branco, sépia, vinheta, nitidez, desfoque, **fundo verde** | Acabamento de cor | “Deixa a cor mais viva” |
 
 ## 6. Imagens, ícones e animações prontas

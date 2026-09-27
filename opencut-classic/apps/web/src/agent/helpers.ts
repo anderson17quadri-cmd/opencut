@@ -114,36 +114,33 @@ export function requireOpenProject() {
 }
 
 /** Projects whose frame size Claude chose on purpose (set_project). */
-const chosenFormat = new Set<string>();
+/** Frame sizes chosen with set_project, per project. */
+const chosenFormat = new Map<string, { width: number; height: number }>();
 
-export function rememberChosenFormat(projectId: string) {
-	chosenFormat.add(projectId);
+export function rememberChosenFormat(projectId: string, size: { width: number; height: number }) {
+	chosenFormat.set(projectId, { ...size });
+}
+
+/**
+ * Puts back the frame size chosen with set_project if something changed it
+ * (the editor resizes to the first clip dropped into an empty timeline,
+ * and a late project reload can bring back the default 16:9).
+ */
+export async function keepChosenFormat() {
+	const project = editor().project.getActive();
+	const chosen = project && chosenFormat.get(project.metadata.id);
+	if (!project || !chosen) return;
+	const current = project.settings.canvasSize;
+	if (current.width === chosen.width && current.height === chosen.height) return;
+	await editor().project.updateSettings({ settings: { canvasSize: chosen }, pushHistory: false });
 }
 
 export function insertAndFind(
 	insert: () => void,
 ): { track: TimelineTrack; element: TimelineElement } {
 	const before = allElementIds();
-	const project = editor().project.getActive();
-	const canvasBefore = project?.settings.canvasSize;
 	insert();
-	// The editor resizes the frame to the first clip dropped into an empty
-	// timeline. Keep a format chosen with set_project (e.g. 9:16 for Reels
-	// with 16:9 footage).
-	const after = editor().project.getActive();
-	if (
-		project &&
-		canvasBefore &&
-		after &&
-		chosenFormat.has(project.metadata.id) &&
-		(after.settings.canvasSize.width !== canvasBefore.width ||
-			after.settings.canvasSize.height !== canvasBefore.height)
-	) {
-		void editor().project.updateSettings({
-			settings: { canvasSize: canvasBefore },
-			pushHistory: false,
-		});
-	}
+	void keepChosenFormat();
 	for (const track of allTracks()) {
 		const element = track.elements.find((e) => !before.has(e.id));
 		if (element) return { track, element };

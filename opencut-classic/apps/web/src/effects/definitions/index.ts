@@ -8,6 +8,7 @@ import {
 	sharpenEffectDefinition,
 	vignetteEffectDefinition,
 } from "./color";
+import { filmLookEffectDefinition } from "./look";
 
 const defaultEffects = [
 	blurEffectDefinition,
@@ -17,6 +18,7 @@ const defaultEffects = [
 	vignetteEffectDefinition,
 	sharpenEffectDefinition,
 	chromaKeyEffectDefinition,
+	filmLookEffectDefinition,
 ];
 
 export function registerDefaultEffects(): void {

@@ -32,6 +32,13 @@ struct EffectUniformInput {
     value: Vec<f32>,
 }
 
+/// Stores a 3D colour lookup table for the "lut" effect pass: `size`³ RGBA8
+/// texels, red fastest (the .cube order). Passes refer to it as u_lut_id.
+#[wasm_bindgen(js_name = registerLut)]
+pub fn register_lut(id: u32, size: u32, rgba: Vec<u8>) -> Result<(), JsValue> {
+    effects::register_lut(id, size, rgba).map_err(|error| JsValue::from_str(&error))
+}
+
 #[wasm_bindgen(js_name = applyEffectPasses)]
 pub fn apply_effect_passes(options: JsValue) -> Result<wgpu::web_sys::OffscreenCanvas, JsValue> {
     let ApplyEffectPassesOptions {

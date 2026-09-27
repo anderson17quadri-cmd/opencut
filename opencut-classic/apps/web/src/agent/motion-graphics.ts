@@ -92,6 +92,7 @@ window.addEventListener("error", (event) => parent.postMessage({ type: "error", 
 </script>
 <script type="module">
 import * as THREE from "${origin}/vendor/three/three.module.min.js";
+import { SVGLoader } from "${origin}/vendor/three/SVGLoader.js";
 const CONFIG = ${config};
 const send = (message, transfer) => parent.postMessage(message, "*", transfer ?? []);
 const fail = (error) => send({ type: "error", message: String(error && error.message || error), stack: String(error && error.stack || "") });
@@ -114,7 +115,7 @@ if (CONFIG.mode === "three") {
 } else {
 	ctx = canvas.getContext("2d", { alpha: true });
 }
-const api = { THREE, canvas, ctx, renderer, scene, camera, width: W, height: H, fps: CONFIG.fps, duration: CONFIG.duration, images: {}, frames: {}, state: {}, clamp, lerp, ease, tween, roundRect };
+const api = { THREE, SVGLoader, canvas, ctx, renderer, scene, camera, width: W, height: H, fps: CONFIG.fps, duration: CONFIG.duration, images: {}, frames: {}, state: {}, clamp, lerp, ease, tween, roundRect };
 const user = (() => {
 ${spec.code}
 ;return {

@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "opencut",
   "display_name": "OpenCut",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Deixe o Claude editar seus vídeos no OpenCut, como um editor profissional.",
   "long_description": "Conecta o Claude ao editor de vídeo OpenCut aberto neste computador. O Claude importa seus vídeos, corta, remove silêncios, gera e estiliza legendas, coloca títulos, ícones, emojis e formas, anima, faz transições, baixa músicas, imagens e vídeos da internet, aplica efeitos de cor, chroma key e máscaras, muda o formato (Reels/TikTok/YouTube), vê o resultado quadro a quadro e exporta. Tudo aparece ao vivo na janela do OpenCut e dá para desfazer com Ctrl+Z. O OpenCut precisa estar aberto.",
   "author": {
@@ -308,6 +308,18 @@
     {
       "name": "detect_scenes",
       "description": "Acha os cortes dentro de um vídeo e separa as cenas"
+    },
+    {
+      "name": "get_style_guide",
+      "description": "Guia de diretor do estilo cinematográfico"
+    },
+    {
+      "name": "apply_look",
+      "description": "Filtros de cor de cinema (LUT): noturno, cinema, filme, limpo, neon, P&B ou .cube"
+    },
+    {
+      "name": "add_3d_logo",
+      "description": "Logo em 3D brilhando, flutuando na mão"
     }
   ],
   "keywords": [
@@ -325,5 +337,26 @@
     "runtimes": {
       "node": ">=18.0.0"
     }
-  }
+  },
+  "prompts": [
+    {
+      "name": "editar_estilo_cinematografico",
+      "description": "Edita um vídeo falado no estilo elegante de tech reel: cor de cinema, legenda discreta, logos 3D na mão, poucos efeitos e marcantes.",
+      "arguments": [
+        "video",
+        "observacoes"
+      ],
+      "text": "Use a extensão OpenCut (o OpenCut está aberto no meu PC) para editar o vídeo \"${arguments.video}\". Não use outro programa. Primeiro chame get_style_guide com style \"cinematico\" e siga o guia à risca, passo a passo: crie um projeto novo, ache o vídeo com list_media_files, add_media e add_to_timeline, entenda o vídeo e me diga o plano em 3 linhas antes de editar. ${arguments.observacoes}"
+    },
+    {
+      "name": "editar_reels_viral",
+      "description": "Edição rápida e chamativa: zooms, legenda estilo Hormozi, títulos, emojis animados e efeitos sonoros.",
+      "arguments": [
+        "video",
+        "observacoes"
+      ],
+      "text": "Use a extensão OpenCut (o OpenCut está aberto no meu PC) para editar o vídeo \"${arguments.video}\" como um editor profissional de Reels virais, seguindo o roteiro \"Editing like a human editor\" das suas instruções. Não use outro programa. Crie um projeto novo, ache o vídeo com list_media_files, entenda o vídeo e me diga o plano em 3 linhas antes de editar. Só mostre imagens de coisas que eu realmente apresento, nunca de exemplos de passagem. ${arguments.observacoes}"
+    }
+  ],
+  "prompts_generated": true
 }

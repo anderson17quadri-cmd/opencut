@@ -39,7 +39,9 @@ Editing:
 - Music: add_media the audio file, add_to_timeline, set_volume (e.g. -18 dB under speech), animate fade_out at the end.
 - Transitions between shots: add_transition (crossfade, fade_black, slides, zoom), or all=true for every cut.
 - From the internet: when the user asks for music, sound effects, images or b-roll, search_free_media then download_media (it also imports the file). For a link the user gives, download_media directly. YouTube/Instagram/TikTok pages can't be downloaded. Credits are collected automatically into a text file next to the exported video.
-- Pictures for what is being said (automatic b-roll — "put images when I mention something"): 1) transcribe with words=true; 2) pick the concrete references worth illustrating (products, brands, places, people, objects, foods, numbers/events) — usually one every 3-8 s, not every noun; 3) for each, search_free_media type "image" with English keywords and match = a plain description of what the picture must show: an AI check orders the results by how well they show it (strong/possible/weak); look at the previews and pick a strong one that really shows the thing (none strong: search again with other words, or skip it); 4) add_web_image with that url, start = the time the word is spoken (≈0.1 s before), duration 2-4 s, style "card" (pop-up photo, anchor "top" on vertical videos so the face stays clear), "fullscreen" (cutaway covering the frame — add photo3d "push" so the still photo moves in 3D like footage; small pictures are sharpened by AI automatically) or "plain"; alternate positions/styles for variety; sound "pop" (cards) or "whoosh" (fullscreen) gives the pro feel; 5) view_frames at a few of those times to check (keep faces and burned-in captions clear). For a logo, prefer search_icons + add_icon. Never write credits on the video: author and licence of everything downloaded are recorded automatically, and export_video writes a "<video> - créditos.txt" file next to the video (creditsFile) that the user can paste into the post caption if they want — tell them where it is.
+- Pictures for what is being said (automatic b-roll — "put images when I mention something"). Only for things the speaker actually presents or explains, never for a passing example or figure of speech: 1) transcribe with words=true; 2) pick the concrete references worth illustrating (products, brands, places, people, objects, foods, numbers/events) — usually one every 3-8 s, not every noun; 3) for each, search_free_media type "image" with English keywords and match = a plain description of what the picture must show: an AI check orders the results by how well they show it (strong/possible/weak); look at the previews and pick a strong one that really shows the thing (none strong: search again with other words, or skip it); 4) add_web_image with that url, start = the time the word is spoken (≈0.1 s before), duration 2-4 s, style "card" (pop-up photo, anchor "top" on vertical videos so the face stays clear), "fullscreen" (cutaway covering the frame — add photo3d "push" so the still photo moves in 3D like footage; small pictures are sharpened by AI automatically) or "plain"; alternate positions/styles for variety; sound "pop" (cards) or "whoosh" (fullscreen) gives the pro feel; 5) view_frames at a few of those times to check (keep faces and burned-in captions clear). For a logo, prefer search_icons + add_icon. Never write credits on the video: author and licence of everything downloaded are recorded automatically, and export_video writes a "<video> - créditos.txt" file next to the video (creditsFile) that the user can paste into the post caption if they want — tell them where it is.
+
+Named styles: when the user asks for a beautiful/elegant/cinematic edit, "estilo cinematográfico", or an edit like a reference video they liked, call get_style_guide (style "cinematico") first and follow that guide instead of the recipe below.
 
 Editing like a human editor (when the user asks for a professional/viral/"like that video" edit of a talking-head video, do all of this; for smaller asks, pick what fits):
 1. Understand it first: get_state, view_frames at 4-6 times, transcribe words=true. Read the whole script: find the hook, key points, lists, numbers, brand/product/place mentions, reveals, jokes and the call to action.
@@ -50,7 +52,7 @@ Editing like a human editor (when the user asks for a professional/viral/"like t
 6. Captions: generate_captions with a preset — "hormozi" (viral talking-head look) or "box" (CapCut look) or "karaoke" — in the lower third, clear of the face and graphics.
 7. One or two signature moments where the script allows (talking about layers, how something is made, a reveal): explode_layers (the scene turns into 3D glass layers with numbered labels), cutout_person + graphics behind the presenter, follow_hand for objects in the hand, 3D motion graphics (floating screens, objects that explode into parts), picture-in-picture next to an animated explainer.
 8. Sound design: every graphic entrance gets a sound (add_sound_effect or the sound option): pop for small pop-ups, whoosh for movement and transitions, impact for big reveals, punch for text slamming in, click/mouse_click for UI and list items, ding/success for checkmarks/prices, notification for message pop-ups, error for a wrong answer, glitch for glitch moments, riser to build up to a reveal. Sounds around -8 dB. Music: search_free_media type "music" matching the mood, under the whole video, then duck_music so it dips while the person talks. With music, find_beats and put cuts/transitions on bars and zooms, pop-ups and sounds on beats. No voice recorded (a narrated video, an intro/outro)? generate_voiceover makes Portuguese narration from text.
-9. Look: a light grade on the talking head (add_effect colour adjustment: a bit more contrast and saturation, slight vignette).
+9. Look: apply_look on the footage ("cinema" for most videos, "noturno" for bright/white rooms, "limpo" for a bright YouTube look).
 10. End with a call-to-action graphic in the last 2-3 s (follow/save/comment) with a ding.
 11. Loudness: master_audio (-14 LUFS, the social-media standard) once all sound is final.
 12. Review like an editor: view_frames at every element you added and at a few random times; fix overlaps (captions vs graphics vs face), bad timing and anything cut off; then export_video. Tell the user, briefly, the edit decisions you made and where the file and credits are.
@@ -65,7 +67,7 @@ If a tool says OpenCut is not open, ask the user to open the OpenCut app and try
 const MOTION_GUIDE = `Write JavaScript that defines render(api) (and optionally setup(api)). It is called once per frame with api.t = time in seconds (0 … duration) and api.progress (0 … 1). Compute everything from t (frames may be rendered in any order); no imports, network or DOM.
 
 mode "2d" (default): draw on api.ctx, a CanvasRenderingContext2D of api.width × api.height (the video size, e.g. 1080×1920 for 9:16). It starts transparent and cleared every frame, so only what you draw covers the video below.
-mode "three": api.THREE (three.js r170), api.scene, api.camera (PerspectiveCamera, fov 35, at z=12 looking at the origin) and api.renderer are ready. Build meshes/lights in setup(api), store them on api.state, move them in render(api); the scene is rendered automatically after render. Transparent background.
+mode "three": api.THREE (three.js r170), api.SVGLoader (to extrude SVG logos: api.SVGLoader.createShapes(path) + THREE.ExtrudeGeometry), api.scene, api.camera (PerspectiveCamera, fov 35, at z=12 looking at the origin) and api.renderer are ready. Build meshes/lights in setup(api), store them on api.state, move them in render(api); the scene is rendered automatically after render. Transparent background.
 
 Helpers: api.tween(t, t0, t1, from, to, easing) eases a value between two times (clamped); api.ease.{linear,in,out,inOut,back,elastic,bounce}; api.lerp, api.clamp; api.roundRect(ctx, x, y, w, h, radius) then ctx.fill(); api.images.name = ImageBitmaps from the images param; fonts: pass fonts: ["Montserrat"] and use ctx.font = "800 96px Montserrat".
 
@@ -255,7 +257,7 @@ function previewsToImages(result: ToolResult): ToolResult {
 	};
 }
 
-const VERSION = "0.10.0";
+const VERSION = "0.11.0";
 
 const server = new McpServer(
 	{ name: "opencut", version: VERSION },
@@ -603,10 +605,14 @@ server.registerTool(
 			language: languageSchema,
 			style: z.enum(["classic", "karaoke"]).optional(),
 			preset: z
-				.enum(["karaoke", "hormozi", "box", "one_word", "minimal", "neon"])
+				.enum(["karaoke", "hormozi", "box", "one_word", "minimal", "neon", "cinematic"])
 				.optional()
-				.describe('Word-by-word caption look (implies style karaoke): "karaoke" (spoken word yellow, pops), "hormozi" (big, 2 words, yellow/green alternating, bouncy — viral talking-head look), "box" (a purple box slides behind the spoken word, CapCut style), "one_word" (one huge word at a time), "minimal" (clean sentence-case subtitles on a dark box), "neon" (glowing cyan). Your colour/font/size options override the preset'),
+				.describe('Word-by-word caption look (implies style karaoke): "karaoke" (spoken word yellow, pops), "hormozi" (big, 2 words, yellow/green alternating, bouncy — viral talking-head look), "box" (a purple box slides behind the spoken word, CapCut style), "one_word" (one huge word at a time), "minimal" (clean sentence-case subtitles on a dark box), "neon" (glowing cyan), "cinematic" (elegant: small sentence-case line low in the frame, spoken word in a warm accent — for the cinematic style). Your colour/font/size options override the preset'),
 			highlightColor: hex.optional().describe("karaoke: colour of the spoken word (default yellow)"),
+			replacements: z
+				.record(z.string(), z.string())
+				.optional()
+				.describe('Word-by-word styles: words the speech model misheard → correct spelling, e.g. {"cult": "Claude", "cloud": "Claude", "gepeto": "GPT"}. Transcribe first, check brand names and fix them here'),
 			wordsPerCaption: z.number().int().min(1).max(20).optional().describe("Words per caption (default 3); 1-3 for fast social captions"),
 			...captionStyle,
 		},
@@ -1379,6 +1385,63 @@ server.registerTool(
 );
 
 server.registerTool(
+	"get_style_guide",
+	{
+		title: "Director's guide for an editing style",
+		description:
+			'The step-by-step director\'s guide for a named editing style — read it BEFORE editing when the user asks for that look, and follow it strictly. "cinematico": the elegant tech-reel look (film colour, discreet captions, 3D logos in the hand, few but striking effects, no random pictures/emojis). Use it when the user asks for a beautiful/elegant/cinematic/professional edit or "like that reference video".',
+		inputSchema: { style: z.string().optional().describe('Default "cinematico"') },
+	},
+	(args) => callOpenCut("get_style_guide", args),
+);
+
+server.registerTool(
+	"apply_look",
+	{
+		title: "Film look (colour grade / LUT)",
+		description:
+			'Grade the footage like a colourist with a 3D LUT on the GPU, plus a matching vignette. Built-in looks: "noturno" (dark and elegant; bright/white rooms turn moody, face stands out), "cinema" (teal & orange film contrast), "filme" (warm, soft, lifted blacks), "limpo" (bright and clean), "neon" (purple shadows, cyan highlights), "pb" (film black & white). Or lutPath: any .cube LUT file on the user\'s computer. Applies to the footage clips (main track and their cutouts), not titles or graphics; calling it again replaces the look.',
+		inputSchema: {
+			look: z.enum(["noturno", "cinema", "filme", "limpo", "neon", "pb"]).optional().describe('Default "noturno"'),
+			lutPath: z.string().optional().describe("Full path of a .cube LUT file instead of a built-in look"),
+			strength: z.number().min(0).max(100).optional().describe("Default 100"),
+			vignette: z.number().min(0).max(100).optional().describe("Default 35 (15 for limpo); 0 for none"),
+			clipIds: z.array(z.string()).optional().describe("Only these clips (default: the footage)"),
+		},
+	},
+	(args) => callOpenCut("apply_look", args),
+);
+
+server.registerTool(
+	"add_3d_logo",
+	{
+		title: "3D logo (floating in the hand)",
+		description:
+			"A brand logo turned into a glossy 3D object with a soft glow, popping in, turning and floating — the signature of pro tech reels. icon: a colour logo id from search_icons (e.g. logos:claude-icon, logos:openai-icon, logos:google-gemini, logos:apple). With videoClipId it floats in the presenter's hand and follows it (hand tracking); otherwise place it with anchor/x/y. Two brands compared: one per hand (hand left/right).",
+		inputSchema: {
+			icon: z.string().describe("Icon id from search_icons (colour logos:* work best)"),
+			start: z.number().min(0).optional().describe("Timeline seconds; default the playhead"),
+			duration: z.number().min(0.8).max(30).optional().describe("Default 3"),
+			videoClipId: z.string().optional().describe("Talking-head clip whose hand the logo follows"),
+			hand: z.enum(["left", "right", "any"]).optional().describe("Which hand (as seen on screen); default any"),
+			offsetY: z.number().min(-40).max(40).optional().describe("% of frame height above(-)/below(+) the palm (default -10)"),
+			anchor: z
+				.enum(["center", "top", "bottom", "left", "right", "top-left", "top-right", "bottom-left", "bottom-right"])
+				.optional(),
+			x: z.number().min(0).max(100).optional(),
+			y: z.number().min(0).max(100).optional(),
+			widthPercent: z.number().min(5).max(80).optional().describe("Default 22"),
+			motion: z.enum(["turn", "spin", "float"]).optional().describe('"float" (default in the hand: sways gently, always facing the camera), "turn" (default elsewhere: turns while rotating), "spin" (keeps spinning)'),
+			glow: hex.optional().describe("Glow colour (default: the logo's main colour)"),
+			depth: z.number().min(0.02).max(0.6).optional().describe("Thickness (default 0.12)"),
+			sound: soundOption.optional().describe("Default pop"),
+			behindPerson: z.boolean().optional(),
+		},
+	},
+	(args) => callOpenCut("add_3d_logo", args),
+);
+
+server.registerTool(
 	"check_task",
 	{
 		title: "Wait for a running task",
@@ -1401,7 +1464,43 @@ type ToolsFile = {
 	instructions: string;
 	tools: Array<{ name: string } & Record<string, unknown>>;
 	transforms: Record<string, "frames" | "previews">;
+	/** Ready-made requests shown in Claude Desktop's "+" menu. */
+	prompts?: PromptSpec[];
 };
+
+type PromptSpec = {
+	name: string;
+	title: string;
+	description: string;
+	arguments: Array<{ name: string; description: string; required: boolean }>;
+	/** Message text; {argument} placeholders are filled in. */
+	template: string;
+};
+
+const PROMPTS: PromptSpec[] = [
+	{
+		name: "editar_estilo_cinematografico",
+		title: "Editar no estilo cinematográfico",
+		description: "Edita um vídeo falado no estilo elegante de tech reel: cor de cinema, legenda discreta, logos 3D na mão, poucos efeitos e marcantes.",
+		arguments: [
+			{ name: "video", description: "Nome do arquivo do vídeo (ex.: 20260927_170736.mp4)", required: true },
+			{ name: "observacoes", description: "Algo específico que você quer (opcional)", required: false },
+		],
+		template:
+			'Use a extensão OpenCut (o OpenCut está aberto no meu PC) para editar o vídeo "{video}". Não use outro programa. Primeiro chame get_style_guide com style "cinematico" e siga o guia à risca, passo a passo: crie um projeto novo, ache o vídeo com list_media_files, add_media e add_to_timeline, entenda o vídeo e me diga o plano em 3 linhas antes de editar. {observacoes}',
+	},
+	{
+		name: "editar_reels_viral",
+		title: "Editar Reels dinâmico (viral)",
+		description: "Edição rápida e chamativa: zooms, legenda estilo Hormozi, títulos, emojis animados e efeitos sonoros.",
+		arguments: [
+			{ name: "video", description: "Nome do arquivo do vídeo", required: true },
+			{ name: "observacoes", description: "Algo específico que você quer (opcional)", required: false },
+		],
+		template:
+			'Use a extensão OpenCut (o OpenCut está aberto no meu PC) para editar o vídeo "{video}" como um editor profissional de Reels virais, seguindo o roteiro "Editing like a human editor" das suas instruções. Não use outro programa. Crie um projeto novo, ache o vídeo com list_media_files, entenda o vídeo e me diga o plano em 3 linhas antes de editar. Só mostre imagens de coisas que eu realmente apresento, nunca de exemplos de passagem. {observacoes}',
+	},
+];
 
 const TRANSFORMS = { frames: framesToImages, previews: previewsToImages } as const;
 const TRANSFORM_BY_TOOL: ToolsFile["transforms"] = {
@@ -1419,7 +1518,7 @@ async function exportTools(path: string) {
 	const client = new Client({ name: "export", version: "1" });
 	await client.connect(clientSide);
 	const { tools } = await client.listTools();
-	const file: ToolsFile = { version: VERSION, instructions: INSTRUCTIONS, tools, transforms: TRANSFORM_BY_TOOL };
+	const file: ToolsFile = { version: VERSION, instructions: INSTRUCTIONS, tools, transforms: TRANSFORM_BY_TOOL, prompts: PROMPTS };
 	const { writeFileSync, mkdirSync } = await import("node:fs");
 	const { dirname } = await import("node:path");
 	for (const target of path.split(",")) {
@@ -1456,7 +1555,9 @@ function fetchAppTools(): Promise<ToolsFile | null> {
 
 async function serve() {
 	const { Server } = await import("@modelcontextprotocol/sdk/server/index.js");
-	const { CallToolRequestSchema, ListToolsRequestSchema } = await import("@modelcontextprotocol/sdk/types.js");
+	const { CallToolRequestSchema, GetPromptRequestSchema, ListPromptsRequestSchema, ListToolsRequestSchema } = await import(
+		"@modelcontextprotocol/sdk/types.js"
+	);
 	const bundled = (await import("./generated/tools.json", { with: { type: "json" } })).default as unknown as ToolsFile;
 	// The app's definitions win (they match the app that will run them);
 	// tools only this extension knows are kept, so an older app never hides
@@ -1476,8 +1577,19 @@ async function serve() {
 
 	const runtime = new Server(
 		{ name: "opencut", version: current.version || VERSION },
-		{ capabilities: { tools: { listChanged: true } }, instructions: current.instructions || INSTRUCTIONS },
+		{ capabilities: { tools: { listChanged: true }, prompts: {} }, instructions: current.instructions || INSTRUCTIONS },
 	);
+	const prompts = () => (current.prompts?.length ? current.prompts : PROMPTS);
+	runtime.setRequestHandler(ListPromptsRequestSchema, async () => ({
+		prompts: prompts().map(({ template: _template, ...prompt }) => prompt),
+	}));
+	runtime.setRequestHandler(GetPromptRequestSchema, async (request) => {
+		const prompt = prompts().find((candidate) => candidate.name === request.params.name);
+		if (!prompt) throw new Error(`Unknown prompt ${request.params.name}`);
+		const values = request.params.arguments ?? {};
+		const text = prompt.template.replace(/\{(\w+)\}/g, (_match, key: string) => String(values[key] ?? "")).trim();
+		return { description: prompt.description, messages: [{ role: "user", content: { type: "text", text } }] };
+	});
 	runtime.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: current.tools as never }));
 	runtime.setRequestHandler(CallToolRequestSchema, async (request) => {
 		const name = request.params.name;

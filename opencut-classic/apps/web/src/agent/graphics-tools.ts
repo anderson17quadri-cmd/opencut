@@ -24,6 +24,7 @@ import { ICON_ID_PATTERN, iconSvgUrl } from "./icons";
 import { type ImageAnimation, type ImageStyle, imagePlacementCode } from "./image-placement";
 import { ANCHORS } from "./layout";
 import { lottieCode, lottieSeconds } from "./lottie-placement";
+import { type LogoMotion, logo3dCode } from "./logo-3d";
 import { TITLE_PRESETS, TITLE_SOUNDS, type TitlePreset, titleCode } from "./titles";
 import { SOUND_EFFECTS, SOUND_LEAD, type SoundEffect, soundEffectFile, soundEffectFileName } from "./sound-effects";
 import { cutoutPerson } from "./vision";
@@ -644,6 +645,62 @@ async function addTitle(args: Args) {
 		...(sound ? { soundClipId: sound.clipId, sound: soundName } : {}),
 		note: "Check it with view_frames (a moment after it starts). To change it, delete_clips this clip (and its sound) and add it again.",
 	};
+}
+
+/**
+ * A brand logo as a glossy 3D object with a glow, popping in and turning
+ * (SVG from the icon library extruded with three.js). With a hand to
+ * follow it is drawn at the centre so follow_hand can move it.
+ */
+export async function add3dLogo(args: Args, { centred = false }: { centred?: boolean } = {}) {
+	const project = requireOpenProject();
+	const icon = str(args, "icon").trim();
+	if (!ICON_ID_PATTERN.test(icon)) throw new Error('"icon" must be an icon id from search_icons, e.g. "logos:claude-icon".');
+	const response = await fetch(iconSvgUrl({ value: icon }));
+	if (!response.ok) throw new Error(`Icon ${icon} not found.`);
+	const svg = await response.text();
+	const canvas = project.settings.canvasSize;
+	const duration = Math.min(Math.max(optNum(args, "duration") ?? 3, 0.8), 30);
+	const start = Math.max(0, optNum(args, "start") ?? toSeconds(editor().playback.getCurrentTime()));
+	const anchor = typeof args.anchor === "string" && (ANCHORS as readonly string[]).includes(args.anchor) ? args.anchor : "center";
+	const widthPercent = Math.min(Math.max(optNum(args, "widthPercent") ?? 22, 5), 80);
+	const margin = 0.08 + widthPercent / 200;
+	let x = anchor.includes("left") ? margin : anchor.includes("right") ? 1 - margin : 0.5;
+	let y = anchor.includes("top") ? 0.22 : anchor.includes("bottom") ? 0.72 : 0.5;
+	const ox = optNum(args, "x");
+	const oy = optNum(args, "y");
+	if (ox !== undefined) x = Math.min(Math.max(ox, 0), 100) / 100;
+	if (oy !== undefined) y = Math.min(Math.max(oy, 0), 100) / 100;
+	if (centred) {
+		x = 0.5;
+		y = 0.5;
+	}
+	// In the hand it stays facing the camera (a turn shows it edge-on).
+	const motion = (["turn", "spin", "float"] as const).find((m) => m === args.motion) ?? (centred ? "float" : "turn");
+	const result = await renderMotionGraphicClip({
+		spec: {
+			code: logo3dCode({
+				x,
+				y,
+				width: widthPercent / 100,
+				motion: motion as LogoMotion,
+				glow: typeof args.glow === "string" && /^#?[0-9a-f]{6}$/i.test(args.glow) ? (args.glow.startsWith("#") ? args.glow : `#${args.glow}`) : null,
+				depth: Math.min(Math.max(optNum(args, "depth") ?? 0.12, 0.02), 0.6),
+			}),
+			mode: "three",
+			width: canvas.width,
+			height: canvas.height,
+			fps: Math.min(Math.max(Math.round(frameRateToFloat(project.settings.fps)), 1), 60),
+			duration,
+			data: { svg },
+		},
+		name: `Logo 3D ${icon.split(":")[1] ?? icon}`.slice(0, 60),
+		start,
+		trackIndex: args.behindPerson === true ? undefined : 0,
+	});
+	const soundName = typeof args.sound === "string" ? args.sound : "pop";
+	const sound = soundName === "none" ? null : await addSoundEffect({ effect: soundName, at: start, volumeDb: -6 });
+	return { ...result, icon, ...(sound ? { soundClipId: sound.clipId } : {}) };
 }
 
 /** CLIP similarity of each picture (base64) to a description; used by the search. */

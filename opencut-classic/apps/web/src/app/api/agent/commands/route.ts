@@ -1,3 +1,4 @@
+import { readFile, stat } from "node:fs/promises";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { dispatch } from "@/agent/broker";
@@ -13,6 +14,7 @@ import { EMOJI_LICENSE, EMOJI_SOURCE, fetchEmojiAnimation, searchEmoji } from "@
 import { animationSeen, fetchAnimation, LOTTIE_LICENSE, searchAnimations } from "@/agent/lottie";
 import { defaultMediaFolders, listMediaFolder } from "@/agent/local-files";
 import { isFromLocalProcess } from "@/agent/request-guards";
+import { styleGuide } from "@/agent/style-guides";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +51,8 @@ const SLOW_TOOL_TIMEOUT_MS: Record<string, number> = {
 	master_audio: 15 * 60_000,
 	detect_scenes: 30 * 60_000,
 	add_title: 10 * 60_000,
+	add_3d_logo: 30 * 60_000,
+	apply_look: 5 * 60_000,
 	auto_reframe: 15 * 60_000,
 	add_transition_effect: 10 * 60_000,
 	punch_zoom: 5 * 60_000,
@@ -241,6 +245,25 @@ async function runServerTool(
 			}
 			return { handled: true, result: placed.result };
 		}
+		case "apply_look": {
+			// A .cube LUT from the user's disk is read here and sent as text.
+			const lutPath = str(args.lutPath);
+			if (!lutPath) return { handled: false };
+			if (!/\.cube$/i.test(lutPath)) throw new Error("lutPath must be a .cube file.");
+			const info = await stat(lutPath).catch(() => null);
+			if (!info?.isFile()) throw new Error(`No file at ${lutPath}.`);
+			if (info.size > 20 * 1024 * 1024) throw new Error("That .cube file is too big (20 MB max).");
+			const { lutPath: _path, ...rest } = args;
+			const applied = await dispatch({
+				tool: "apply_look",
+				args: { ...rest, lutText: await readFile(lutPath, "utf8") },
+				timeoutMs: DEFAULT_TIMEOUT_MS,
+			});
+			if (!applied.ok) throw new Error(applied.error ?? "Could not apply the LUT.");
+			return { handled: true, result: applied.result };
+		}
+		case "get_style_guide":
+			return { handled: true, result: styleGuide(str(args.style) || "cinematico") };
 		case "search_emoji":
 			return { handled: true, result: searchEmoji({ query: str(args.query), limit: typeof args.limit === "number" ? args.limit : undefined }) };
 		case "add_animated_emoji": {

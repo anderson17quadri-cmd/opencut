@@ -51,16 +51,18 @@ import {
 	fromSeconds,
 	num,
 	optNum,
+	keepChosenFormat,
 	rememberChosenFormat,
 	requireOpenProject,
 	str,
 	toSeconds,
 	upsertKeyframes,
 } from "./helpers";
-import { renderMotionGraphicClip, runGraphicsTool } from "./graphics-tools";
+import { add3dLogo, renderMotionGraphicClip, runGraphicsTool } from "./graphics-tools";
 import { AUDIO_TOOLS, runAudioTool } from "./audio-tools";
 import { TRANSITION_TOOLS, runTransitionTool } from "./gl-transitions";
 import { HUMAN_TOOLS, runHumanTool } from "./human-tools";
+import { LOOKS, encodeTable, parseCube } from "@/effects/looks";
 import { CAPTION_PRESETS, CAPTION_PRESET_STYLES, type CaptionPreset, type KaraokeStyle, groupWords, karaokeCode } from "./karaoke";
 import { createHandLandmarker, videoFrames } from "./vision";
 import {
@@ -764,6 +766,27 @@ async function generateCaptions(args: Args) {
 	return insertCaptions(args, chunks);
 }
 
+/** Words the speech model got wrong → right spelling (e.g. {"cult": "Claude"}). */
+function captionFixes(args: Args): Map<string, string> {
+	const raw = args.replacements;
+	const fixes = new Map<string, string>();
+	if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+		for (const [wrong, right] of Object.entries(raw as Record<string, unknown>)) {
+			if (typeof right === "string" && wrong.trim()) fixes.set(wrong.trim().toLocaleLowerCase(), right);
+		}
+	}
+	return fixes;
+}
+
+/** Replaces a whole word, keeping its punctuation (e.g. "cult," → "Claude,"). */
+function fixWord(word: string, fixes: Map<string, string>): string {
+	if (fixes.size === 0) return word;
+	const match = /^([^\p{L}\p{N}]*)(.*?)([^\p{L}\p{N}]*)$/u.exec(word);
+	if (!match) return word;
+	const right = fixes.get(match[2].toLocaleLowerCase());
+	return right === undefined ? word : `${match[1]}${right}${match[3]}`;
+}
+
 /**
  * Word-by-word animated captions: transcribe with word timing, then render
  * the phrases as one transparent motion-graphic clip where the spoken
@@ -771,8 +794,9 @@ async function generateCaptions(args: Args) {
  */
 async function generateKaraokeCaptions(args: Args) {
 	const project = requireOpenProject();
+	const fixes = captionFixes(args);
 	const words = (await transcribeTimeline(args, { words: true }))
-		.map((w) => ({ text: w.text.trim(), start: w.start, end: Math.max(w.end, w.start + 0.05) }))
+		.map((w) => ({ text: fixWord(w.text.trim(), fixes), start: w.start, end: Math.max(w.end, w.start + 0.05) }))
 		.filter((w) => w.text);
 	if (words.length === 0) throw new Error("No speech was found to caption.");
 
@@ -785,7 +809,8 @@ async function generateKaraokeCaptions(args: Args) {
 		words,
 		wordsPerCaption: Math.max(1, Math.round(optNum(args, "wordsPerCaption") ?? look.wordsPerCaption)),
 	});
-	const position = opt(args, "position", isString) ?? "bottom";
+	const positionArg = opt(args, "position", isString);
+	const position = positionArg ?? "bottom";
 	const background = opt(args, "background", isString);
 	const fontFamily = opt(args, "fontFamily", isString) ?? look.font;
 	const start = Math.max(0, groups[0].start - 0.05);
@@ -801,7 +826,7 @@ async function generateKaraokeCaptions(args: Args) {
 		upcomingOpacity: look.upcomingOpacity ?? 0.55,
 		boxColor:
 			background && background !== "none" ? hexColor(background) : background === "none" ? null : (look.boxColor ?? null),
-		y: position === "top" ? 0.2 : position === "middle" ? 0.5 : 0.78,
+		y: positionArg ? (position === "top" ? 0.2 : position === "middle" ? 0.5 : 0.78) : (look.y ?? 0.78),
 		uppercase: opt(args, "uppercase", isBool) ?? look.uppercase ?? true,
 		maxWidth: 0.86,
 		highlightMode: look.highlightMode ?? "color",
@@ -1062,6 +1087,70 @@ async function addEffect(args: Args) {
 	return { applied };
 }
 
+/**
+ * A film look on the footage (not on titles/graphics): the "film-look" LUT
+ * effect plus a matching vignette, replacing any earlier look. Built-in
+ * looks or a .cube LUT (lutText, read from disk by the server).
+ */
+async function applyLook(args: Args) {
+	requireOpenProject();
+	ensureEffects();
+	const lutText = opt(args, "lutText", isString);
+	const look = lutText ? "custom" : (opt(args, "look", isString) ?? "noturno");
+	if (look !== "custom" && !LOOKS[look]) {
+		throw new Error(`Unknown look "${look}". Looks: ${Object.keys(LOOKS).join(", ")} (or lutPath for a .cube file).`);
+	}
+	const lutData = lutText ? encodeTable(parseCube(lutText)) : "";
+	const strength = Math.min(Math.max(optNum(args, "strength") ?? 100, 0), 100);
+	const vignette = Math.min(Math.max(optNum(args, "vignette") ?? (look === "limpo" ? 15 : 35), 0), 100);
+
+	// Footage only: the main track's video/image clips and clips of the same
+	// media (person cutouts), unless clips are named.
+	const clipIds = Array.isArray(args.clipIds) ? (args.clipIds as unknown[]).filter(isString) : null;
+	const main = tracks().main;
+	const footageMedia = new Set(main.elements.flatMap((element) => ("mediaId" in element ? [element.mediaId] : [])));
+	const targets = allTracks().flatMap((track) =>
+		track.elements
+			.filter((element) =>
+				clipIds
+					? clipIds.includes(element.id)
+					: (element.type === "video" || element.type === "image") &&
+						(track.id === main.id || ("mediaId" in element && footageMedia.has(element.mediaId))),
+			)
+			.map((element) => ({ track, element })),
+	);
+	if (targets.length === 0) throw new Error("No footage clips to grade.");
+	const applied = await asOneStep(() =>
+		targets.map(({ track, element }) => {
+			const effects = "effects" in element ? (element.effects ?? []) : [];
+			for (const effect of effects) {
+				// A look brings its own vignette: both are replaced.
+				if (effect.type === "film-look" || effect.type === "vignette") {
+					new RemoveClipEffectCommand({ trackId: track.id, elementId: element.id, effectId: effect.id }).execute();
+				}
+			}
+			const add = (effectType: string, params: ParamValues) => {
+				const command = new AddClipEffectCommand({ trackId: track.id, elementId: element.id, effectType });
+				command.execute();
+				const effectId = command.getEffectId();
+				if (effectId) new UpdateClipEffectParamsCommand({ trackId: track.id, elementId: element.id, effectId, params }).execute();
+				return effectId;
+			};
+			const lookId = add("film-look", { look, strength, lutData });
+			if (vignette > 0) add("vignette", { vignette });
+			return { clipId: element.id, effectId: lookId };
+		}),
+	);
+	return {
+		look,
+		strength,
+		vignette,
+		applied,
+		looks: Object.fromEntries(Object.entries(LOOKS).map(([name, { description }]) => [name, description])),
+		note: "Check it with view_frames. Call apply_look again to change it (the old look is replaced).",
+	};
+}
+
 async function updateEffect(args: Args) {
 	requireOpenProject();
 	ensureEffects();
@@ -1194,7 +1283,7 @@ async function setProject(args: Args) {
 	if (Object.keys(settings).length === 0) throw new Error("Nothing to change.");
 
 	await editor().project.updateSettings({ settings });
-	if (settings.canvasSize) rememberChosenFormat(project.metadata.id);
+	if (settings.canvasSize) rememberChosenFormat(project.metadata.id, settings.canvasSize);
 	const next = editor().project.getActive().settings;
 	return {
 		width: next.canvasSize.width,
@@ -1972,6 +2061,9 @@ export async function runProTool({
 	tool: string;
 	args: Args;
 }): Promise<unknown> {
+	// A format chosen with set_project wins over a late reload or an
+	// automatic resize, before anything is placed or rendered.
+	if (tool !== "set_project" && editor().project.getActive()) await keepChosenFormat();
 	switch (tool) {
 		case "view_frames":
 			return viewFrames(args);
@@ -1997,6 +2089,8 @@ export async function runProTool({
 			return listEffects();
 		case "add_effect":
 			return addEffect(args);
+		case "apply_look":
+			return applyLook(args);
 		case "update_effect":
 			return updateEffect(args);
 		case "remove_effect":
@@ -2029,6 +2123,20 @@ export async function runProTool({
 			return moveLayer(args);
 		case "follow_hand":
 			return followHand(args);
+		case "add_3d_logo": {
+			// Following a hand: the logo is drawn at the centre of its clip and
+			// follow_hand keys the clip onto the palm.
+			const videoClipId = opt(args, "videoClipId", isString);
+			const logo = await add3dLogo(args, { centred: Boolean(videoClipId) });
+			if (!videoClipId) return logo;
+			const followed = await followHand({
+				clipId: logo.clipId,
+				videoClipId,
+				hand: opt(args, "hand", isString) ?? "any",
+				offsetY: optNum(args, "offsetY") ?? -10,
+			});
+			return { ...logo, followingHand: followed };
+		}
 		default:
 			if (HUMAN_TOOLS.has(tool)) return runHumanTool({ tool, args });
 			if (AUDIO_TOOLS.has(tool)) return runAudioTool({ tool, args });

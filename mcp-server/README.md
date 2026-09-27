@@ -31,7 +31,7 @@ The extension is a small stdio MCP server. Each tool is a POST to
 it to the open window (see `opencut-classic/apps/web/src/agent`). Nothing
 leaves the computer.
 
-Tools (71), roughly what a professional editor does:
+Tools (74), roughly what a professional editor does:
 
 - **Project**: `get_state`, `list_projects`, `create_project`, `open_project`,
   `set_project` (9:16 / 16:9 / 1:1 / 4:5…, fps, colour or blurred background).
@@ -82,6 +82,12 @@ Tools (71), roughly what a professional editor does:
   `match` ranks pictures by CLIP similarity; `photo3d` on pictures
   (Depth Anything V2 depth + parallax shader); automatic 2× upscaling of
   small full-screen pictures (Swin2SR).
+- **Looks and styles**: `apply_look` grades footage with a GPU 3D-LUT pass
+  (built-in film looks generated in `effects/looks.ts`, or any `.cube`
+  file); `add_3d_logo` extrudes a colour SVG logo into a glossy, glowing
+  3D object, optionally following a hand; `get_style_guide` returns a
+  director's guide ("cinematico"). The extension also offers ready-made
+  prompts (MCP prompts) in Claude Desktop's "+" menu.
 - **Animated emojis**: `search_emoji` + `add_animated_emoji` (Google's Noto
   Animated Emoji, CC BY 4.0, credited automatically).
 - **Open-source engines**: `clean_voice` (DeepFilterNet 3 noise

@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 use bytemuck::{Pod, Zeroable};
@@ -5,6 +6,7 @@ use gpu::{FULLSCREEN_SHADER_SOURCE, GpuContext};
 use thiserror::Error;
 use wgpu::util::DeviceExt;
 
+use crate::lut::{lut_version, with_lut};
 use crate::{EffectPass, UniformValue};
 
 const GAUSSIAN_BLUR_SHADER_ID: &str = "gaussian-blur";
@@ -13,6 +15,8 @@ const COLOR_GRADE_SHADER_ID: &str = "color-grade";
 const COLOR_GRADE_SHADER_SOURCE: &str = include_str!("shaders/color_grade.wgsl");
 const CHROMA_KEY_SHADER_ID: &str = "chroma-key";
 const CHROMA_KEY_SHADER_SOURCE: &str = include_str!("shaders/chroma_key.wgsl");
+const LUT_SHADER_ID: &str = "lut";
+const LUT_SHADER_SOURCE: &str = include_str!("shaders/lut.wgsl");
 
 // Scalar uniforms of the colour shaders, in the order they fill the
 // p0/p1/p2 vec4 slots of the uniform buffer. Missing ones default to 0.
@@ -39,6 +43,8 @@ const CHROMA_KEY_UNIFORMS: [&str; 6] = [
     "u_spill",
 ];
 
+const LUT_UNIFORMS: [&str; 3] = ["u_lut_id", "u_strength", "u_lut_size"];
+
 pub struct ApplyEffectsOptions<'a> {
     pub source: &'a wgpu::Texture,
     pub width: u32,
@@ -48,7 +54,12 @@ pub struct ApplyEffectsOptions<'a> {
 
 pub struct EffectPipeline {
     uniform_bind_group_layout: wgpu::BindGroupLayout,
+    lut_bind_group_layout: wgpu::BindGroupLayout,
     pipelines: HashMap<String, wgpu::RenderPipeline>,
+    /// LUT id → (version it was built from, its texture bind group).
+    lut_bind_groups: RefCell<HashMap<u32, (u64, wgpu::BindGroup)>>,
+    /// Used when a pass names a LUT that isn't registered: no change.
+    identity_lut: wgpu::BindGroup,
 }
 
 #[derive(Debug, Error)]
@@ -107,6 +118,30 @@ impl EffectPipeline {
                     label: Some("effects-fullscreen-shader"),
                     source: wgpu::ShaderSource::Wgsl(FULLSCREEN_SHADER_SOURCE.into()),
                 });
+        let lut_bind_group_layout =
+            context
+                .device()
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("effects-lut-bind-group-layout"),
+                    entries: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                                view_dimension: wgpu::TextureViewDimension::D3,
+                                multisampled: false,
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                            count: None,
+                        },
+                    ],
+                });
         let pipeline_layout =
             context
                 .device()
@@ -118,7 +153,19 @@ impl EffectPipeline {
                     ],
                     immediate_size: 0,
                 });
-        let build_pipeline = |shader_id: &str, source: &str| {
+        let lut_pipeline_layout =
+            context
+                .device()
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("effects-lut-pipeline-layout"),
+                    bind_group_layouts: &[
+                        Some(context.texture_sampler_bind_group_layout()),
+                        Some(&uniform_bind_group_layout),
+                        Some(&lut_bind_group_layout),
+                    ],
+                    immediate_size: 0,
+                });
+        let build_pipeline = |shader_id: &str, source: &str, pipeline_layout: &wgpu::PipelineLayout| {
             let fragment_module =
                 context
                     .device()
@@ -130,7 +177,7 @@ impl EffectPipeline {
                 .device()
                 .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                     label: Some(&format!("effects-{shader_id}-pipeline")),
-                    layout: Some(&pipeline_layout),
+                    layout: Some(pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &vertex_shader_module,
                         entry_point: Some("vertex_main"),
@@ -162,19 +209,57 @@ impl EffectPipeline {
                     cache: None,
                 })
         };
-        let pipelines = [
+        let mut pipelines: HashMap<String, wgpu::RenderPipeline> = [
             (GAUSSIAN_BLUR_SHADER_ID, GAUSSIAN_BLUR_SHADER_SOURCE),
             (COLOR_GRADE_SHADER_ID, COLOR_GRADE_SHADER_SOURCE),
             (CHROMA_KEY_SHADER_ID, CHROMA_KEY_SHADER_SOURCE),
         ]
         .into_iter()
-        .map(|(shader_id, source)| (shader_id.to_string(), build_pipeline(shader_id, source)))
+        .map(|(shader_id, source)| {
+            (shader_id.to_string(), build_pipeline(shader_id, source, &pipeline_layout))
+        })
         .collect();
+        pipelines.insert(
+            LUT_SHADER_ID.to_string(),
+            build_pipeline(LUT_SHADER_ID, LUT_SHADER_SOURCE, &lut_pipeline_layout),
+        );
+
+        // 2×2×2 identity table.
+        let mut identity = Vec::with_capacity(32);
+        for b in 0..2u8 {
+            for g in 0..2u8 {
+                for r in 0..2u8 {
+                    identity.extend_from_slice(&[r * 255, g * 255, b * 255, 255]);
+                }
+            }
+        }
+        let identity_lut =
+            create_lut_bind_group(context, &lut_bind_group_layout, 2, &identity);
 
         Self {
             uniform_bind_group_layout,
+            lut_bind_group_layout,
             pipelines,
+            lut_bind_groups: RefCell::new(HashMap::new()),
+            identity_lut,
         }
+    }
+
+    /// The bind group of a registered LUT, (re)built when it changed.
+    fn lut_bind_group(&self, context: &GpuContext, id: u32) -> Option<wgpu::BindGroup> {
+        let version = lut_version(id)?;
+        if let Some((built, group)) = self.lut_bind_groups.borrow().get(&id) {
+            if *built == version {
+                return Some(group.clone());
+            }
+        }
+        let group = with_lut(id, |lut| {
+            create_lut_bind_group(context, &self.lut_bind_group_layout, lut.size, &lut.rgba)
+        })?;
+        self.lut_bind_groups
+            .borrow_mut()
+            .insert(id, (version, group.clone()));
+        Some(group)
     }
 
     pub fn apply(
@@ -289,6 +374,13 @@ impl EffectPipeline {
                 render_pass.set_vertex_buffer(0, context.fullscreen_quad().slice(..));
                 render_pass.set_bind_group(0, &texture_bind_group, &[]);
                 render_pass.set_bind_group(1, &uniform_bind_group, &[]);
+                if pass.shader == LUT_SHADER_ID {
+                    let id = read_number_uniform(pass, "u_lut_id")? as u32;
+                    let group = self
+                        .lut_bind_group(context, id)
+                        .unwrap_or_else(|| self.identity_lut.clone());
+                    render_pass.set_bind_group(2, &group, &[]);
+                }
                 render_pass.draw(0..6, 0..1);
             }
 
@@ -309,6 +401,7 @@ fn pack_effect_uniforms(
     let named: &[&str] = match shader {
         COLOR_GRADE_SHADER_ID => &COLOR_GRADE_UNIFORMS,
         CHROMA_KEY_SHADER_ID => &CHROMA_KEY_UNIFORMS,
+        LUT_SHADER_ID => &LUT_UNIFORMS,
         _ => return pack_blur_uniforms(pass, resolution),
     };
 
@@ -400,4 +493,60 @@ fn read_vec2_uniform(pass: &EffectPass, uniform: &str) -> Result<[f32; 2], Effec
         });
     }
     Ok([values[0], values[1]])
+}
+
+fn create_lut_bind_group(
+    context: &GpuContext,
+    layout: &wgpu::BindGroupLayout,
+    size: u32,
+    rgba: &[u8],
+) -> wgpu::BindGroup {
+    let extent = wgpu::Extent3d {
+        width: size,
+        height: size,
+        depth_or_array_layers: size,
+    };
+    let texture = context.device().create_texture(&wgpu::TextureDescriptor {
+        label: Some("effects-lut-texture"),
+        size: extent,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D3,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    context.queue().write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        rgba,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(size * 4),
+            rows_per_image: Some(size),
+        },
+        extent,
+    );
+    let view = texture.create_view(&wgpu::TextureViewDescriptor {
+        dimension: Some(wgpu::TextureViewDimension::D3),
+        ..Default::default()
+    });
+    context.device().create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("effects-lut-bind-group"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(context.linear_sampler()),
+            },
+        ],
+    })
 }

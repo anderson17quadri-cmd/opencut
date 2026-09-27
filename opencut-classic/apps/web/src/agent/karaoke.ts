@@ -36,7 +36,7 @@ export interface KaraokeStyle {
 	alternateColors: string[] | null;
 }
 
-export const CAPTION_PRESETS = ["karaoke", "hormozi", "box", "one_word", "minimal", "neon"] as const;
+export const CAPTION_PRESETS = ["karaoke", "hormozi", "box", "one_word", "minimal", "neon", "cinematic"] as const;
 export type CaptionPreset = (typeof CAPTION_PRESETS)[number];
 
 /** Social-media caption looks; the user's explicit options override them. */
@@ -70,6 +70,20 @@ export const CAPTION_PRESET_STYLES: Record<
 		uppercase: false,
 		outline: false,
 		boxColor: "rgba(0,0,0,0.55)",
+	},
+	// Elegant, like pro tech reels: small sentence-case line low in the
+	// frame, soft shadow, the spoken word in a warm accent.
+	cinematic: {
+		wordsPerCaption: 5,
+		fontSizePercent: 3.6,
+		font: "Montserrat",
+		fontWeight: 600,
+		pop: 0,
+		upcomingOpacity: 1,
+		uppercase: false,
+		outline: false,
+		highlightColor: "#ff7a45",
+		y: 0.86,
 	},
 	// Glowing neon highlight.
 	neon: { wordsPerCaption: 3, fontSizePercent: 6.5, font: "Bebas Neue", highlightColor: "#00f0ff", glow: true, fontWeight: 400 },
