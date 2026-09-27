@@ -25,7 +25,7 @@ import { type ImageAnimation, type ImageStyle, imagePlacementCode } from "./imag
 import { ANCHORS } from "./layout";
 import { lottieCode, lottieSeconds } from "./lottie-placement";
 import { type LogoMotion, logo3dCode } from "./logo-3d";
-import { TITLE_PRESETS, TITLE_SOUNDS, type TitlePreset, titleCode } from "./titles";
+import { TITLE_PRESETS, TITLE_SOUNDS, type TitlePreset, editorialCode, titleCode } from "./titles";
 import { SOUND_EFFECTS, SOUND_LEAD, type SoundEffect, soundEffectFile, soundEffectFileName } from "./sound-effects";
 import { cutoutPerson } from "./vision";
 import { type ParallaxMotion, parallaxFrames, pictureSimilarity, upscalePicture } from "./ai-models";
@@ -607,10 +607,32 @@ async function addTitle(args: Args) {
 	const position = args.position === "center" ? 0.5 : args.position === "bottom" ? 0.74 : 0.22;
 	const yPercent = optNum(args, "y");
 	const font = typeof args.font === "string" && /^[\w\s-]{1,60}$/.test(args.font) ? args.font : "Montserrat";
-	const sizePercent = Math.min(Math.max(optNum(args, "size") ?? 6.5, 2), 20);
+	const sizePercent = Math.min(Math.max(optNum(args, "size") ?? (preset === "editorial" ? 5.2 : 6.5), 2), 20);
+	const editorial = preset === "editorial";
+	const headFont = editorial
+		? typeof args.font === "string" && /^[\w\s-]{1,60}$/.test(args.font)
+			? args.font
+			: "Oswald"
+		: font;
+	const xPercent = optNum(args, "x");
 	const result = await renderMotionGraphicClip({
 		spec: {
-			code: titleCode({
+			code: editorial
+				? editorialCode({
+						kicker: typeof args.kicker === "string" && args.kicker.trim() ? args.kicker.trim().slice(0, 40) : null,
+						text,
+						accentWords: Array.isArray(args.accentWords) ? args.accentWords.filter((w): w is string => typeof w === "string") : [],
+						font: headFont,
+						bodyFont: "Montserrat",
+						size: (sizePercent * canvas.height) / 100,
+						color: hex(args.color, "#ffffff"),
+						accentColor: hex(args.accentColor, "#ff7a45"),
+						x: xPercent === undefined ? 0.07 : Math.min(Math.max(xPercent, 0), 90) / 100,
+						y: yPercent === undefined ? (args.position === "center" ? 0.4 : args.position === "bottom" ? 0.62 : 0.12) : Math.min(Math.max(yPercent, 0), 95) / 100,
+						align: args.align === "center" ? "center" : "left",
+						meta: typeof args.subtitle === "string" && args.subtitle.trim() ? args.subtitle.trim().slice(0, 80) : null,
+					})
+				: titleCode({
 				preset,
 				text,
 				subtitle: typeof args.subtitle === "string" && args.subtitle.trim() ? args.subtitle.trim().slice(0, 100) : null,
@@ -629,7 +651,7 @@ async function addTitle(args: Args) {
 			height: canvas.height,
 			fps: Math.min(Math.max(Math.round(frameRateToFloat(project.settings.fps)), 1), 60),
 			duration,
-			fonts: [font],
+			fonts: editorial ? [headFont, "Montserrat"] : [font],
 		},
 		name: `Título: ${text}`.slice(0, 60),
 		start,

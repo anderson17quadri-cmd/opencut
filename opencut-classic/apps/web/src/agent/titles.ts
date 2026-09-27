@@ -2,7 +2,7 @@
 // graphics sandbox (the same engine as Claude's motion graphics), so a
 // polished animated title is one call instead of hand-written code.
 
-export const TITLE_PRESETS = ["pop", "typewriter", "slide_up", "highlight", "glitch", "stamp"] as const;
+export const TITLE_PRESETS = ["pop", "typewriter", "slide_up", "highlight", "glitch", "stamp", "editorial"] as const;
 export type TitlePreset = (typeof TITLE_PRESETS)[number];
 
 /** The sound that fits each preset's entrance. */
@@ -13,6 +13,7 @@ export const TITLE_SOUNDS: Record<TitlePreset, string> = {
 	highlight: "swoosh_down",
 	glitch: "glitch",
 	stamp: "punch",
+	editorial: "none",
 };
 
 export interface TitleSpec {
@@ -176,6 +177,101 @@ function render({ ctx, t, width, height, duration, ease, clamp, roundRect }) {
 		ctx.fillText(P.subtitle, width / 2, sy);
 	}
 	ctx.restore();
+}
+`;
+}
+
+export interface EditorialSpec {
+	/** Small uppercase line above ("DESAFIO DE EDIÇÃO"), or null. */
+	kicker: string | null;
+	/** Headline; "\n" breaks lines. */
+	text: string;
+	accentWords: string[];
+	/** Headline font (condensed display face) and the kicker/meta font. */
+	font: string;
+	bodyFont: string;
+	/** Headline letter height, pixels. */
+	size: number;
+	color: string;
+	accentColor: string;
+	/** Left edge and top, fractions of the frame. */
+	x: number;
+	y: number;
+	align: "left" | "center";
+	/** Small line under the headline, or null. */
+	meta: string | null;
+}
+
+/**
+ * Magazine-style title of pro explainer reels: a tiny letter-spaced kicker
+ * with an accent dot, then a condensed uppercase headline whose lines rise
+ * from behind a mask one after another, an accent colour on key words,
+ * and an optional meta line.
+ */
+export function editorialCode(spec: EditorialSpec): string {
+	return `
+const P = ${JSON.stringify(spec)};
+const clean = (w) => w.toLocaleLowerCase().replace(/[^\\p{L}\\p{N}]/gu, "");
+const ACCENT = new Set(P.accentWords.map(clean));
+function render({ ctx, t, width, height, duration, ease, clamp }) {
+	const S = P.size;
+	const OUT = Math.min(0.35, duration / 4);
+	const exit = ease.in(clamp((t - (duration - OUT)) / OUT));
+	const left = width * P.x;
+	let y = height * P.y;
+	ctx.textBaseline = "alphabetic";
+	ctx.globalAlpha = 1 - exit;
+	const shiftUp = exit * S * 0.4;
+	// Kicker.
+	if (P.kicker) {
+		const k = Math.round(S * 0.3);
+		ctx.font = "700 " + k + "px \\"" + P.bodyFont + "\\", sans-serif";
+		const text = P.kicker.toLocaleUpperCase().split("").join(String.fromCharCode(8202));
+		const a = ease.out(clamp(t / 0.3));
+		const w = ctx.measureText(text).width + k * 1.2;
+		const kx = P.align === "center" ? (width - w) / 2 : left;
+		ctx.save();
+		ctx.globalAlpha *= a;
+		ctx.fillStyle = P.accentColor;
+		ctx.beginPath(); ctx.arc(kx + k * 0.3, y - k * 0.35 - shiftUp, k * 0.22, 0, Math.PI * 2); ctx.fill();
+		ctx.fillStyle = "rgba(255,255,255,0.78)";
+		ctx.fillText(text, kx + k * 1.0 + (1 - a) * k, y - shiftUp);
+		ctx.restore();
+		y += k * 0.8;
+	}
+	// Headline lines rise from a mask, staggered.
+	ctx.font = "700 " + S + "px \\"" + P.font + "\\", sans-serif";
+	const lines = P.text.toLocaleUpperCase().split("\\n");
+	const lh = S * 1.02;
+	lines.forEach((line, i) => {
+		const p = ease.out(clamp((t - 0.12 - i * 0.09) / 0.45));
+		const top = y + i * lh;
+		const words = line.split(/\\s+/).filter(Boolean);
+		const space = ctx.measureText(" ").width;
+		const widths = words.map((w) => ctx.measureText(w).width);
+		const total = widths.reduce((a, b) => a + b, 0) + space * Math.max(0, words.length - 1);
+		let x = P.align === "center" ? (width - total) / 2 : left;
+		ctx.save();
+		ctx.beginPath(); ctx.rect(0, top - shiftUp, width, lh + S * 0.12); ctx.clip();
+		const dy = (1 - p) * lh;
+		words.forEach((w, j) => {
+			ctx.fillStyle = ACCENT.has(clean(w)) ? P.accentColor : P.color;
+			ctx.shadowColor = "rgba(0,0,0,0.35)"; ctx.shadowBlur = S * 0.15;
+			ctx.fillText(w, x, top + S * 0.92 + dy - shiftUp);
+			x += widths[j] + space;
+		});
+		ctx.restore();
+	});
+	if (P.meta) {
+		const m = Math.round(S * 0.2);
+		ctx.font = "500 " + m + "px \\"" + P.bodyFont + "\\", sans-serif";
+		const a = ease.out(clamp((t - 0.45) / 0.35));
+		ctx.globalAlpha = (1 - exit) * a * 0.75;
+		ctx.fillStyle = P.color;
+		const my = y + lines.length * lh + m * 1.6 - shiftUp;
+		const mw = ctx.measureText(P.meta).width;
+		ctx.fillText(P.meta, P.align === "center" ? (width - mw) / 2 : left, my);
+	}
 }
 `;
 }

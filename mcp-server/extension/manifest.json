@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "opencut",
   "display_name": "OpenCut",
-  "version": "0.11.1",
+  "version": "0.12.0",
   "description": "Deixe o Claude editar seus vídeos no OpenCut, como um editor profissional.",
   "long_description": "Conecta o Claude ao editor de vídeo OpenCut aberto neste computador. O Claude importa seus vídeos, corta, remove silêncios, gera e estiliza legendas, coloca títulos, ícones, emojis e formas, anima, faz transições, baixa músicas, imagens e vídeos da internet, aplica efeitos de cor, chroma key e máscaras, muda o formato (Reels/TikTok/YouTube), vê o resultado quadro a quadro e exporta. Tudo aparece ao vivo na janela do OpenCut e dá para desfazer com Ctrl+Z. O OpenCut precisa estar aberto.",
   "author": {
@@ -279,7 +279,7 @@
     },
     {
       "name": "add_title",
-      "description": "Títulos animados prontos: pop, máquina de escrever, subir, marca-texto, glitch, carimbo"
+      "description": "Títulos animados prontos: pop, máquina de escrever, subir, marca-texto, glitch, carimbo, revista (editorial)"
     },
     {
       "name": "search_emoji",
@@ -310,8 +310,12 @@
       "description": "Acha os cortes dentro de um vídeo e separa as cenas"
     },
     {
+      "name": "set_layout",
+      "description": "Troca de layout: você vai para um quadro com borda e sobra espaço para o gráfico"
+    },
+    {
       "name": "get_style_guide",
-      "description": "Guia de diretor do estilo cinematográfico"
+      "description": "Guias de diretor: plano adaptado ao tipo de vídeo e estilo cinematográfico"
     },
     {
       "name": "apply_look",
@@ -339,6 +343,15 @@
     }
   },
   "prompts": [
+    {
+      "name": "editar_com_plano",
+      "description": "Assiste o vídeo primeiro, identifica o tipo (explicação, comparação, tutorial, vlog, review, podcast, venda, história), monta um plano com tempos e edita com a receita certa.",
+      "arguments": [
+        "video",
+        "observacoes"
+      ],
+      "text": "Use a extensão OpenCut (o OpenCut está aberto no meu PC) para editar o vídeo \"${arguments.video}\". Não use outro programa. Primeiro chame get_style_guide com style \"automatico\" e siga o guia à risca: crie um projeto novo, ache o vídeo com list_media_files, add_media e add_to_timeline; assista o vídeo (view_frames e transcrição), faça o diagnóstico (tipo de vídeo, luz, som, momentos-chave) e o plano com tempos, me mostre em poucas linhas e depois edite seguindo a receita do tipo. ${arguments.observacoes}"
+    },
     {
       "name": "editar_estilo_cinematografico",
       "description": "Edita um vídeo falado no estilo elegante de tech reel: cor de cinema, legenda discreta, logos 3D na mão, poucos efeitos e marcantes.",

@@ -18,10 +18,11 @@ O jeito mais fácil de ter uma edição bonita é pedir um **estilo pronto**. O 
 
 | Estilo | Como é | Como pedir |
 |---|---|---|
+| **Com plano (recomendado)** | O Claude **assiste o vídeo primeiro**, descobre o tipo (explicação, comparação, tutorial, vlog, review, podcast, anúncio, história, montagem), anota luz, som e momentos-chave, **monta um plano com os tempos** e te mostra antes de editar. Cada tipo tem sua receita | **+** → **OpenCut** → **"Editar com plano (se adapta ao vídeo)"**. Ou escreva: *"edita o vídeo X"* |
 | **Cinematográfico** | Elegante, estilo "tech reel" de criador grande: **cor de cinema** (sem recorte), **legenda pequena e discreta**, **logos 3D brilhando na sua mão**, zooms suaves, música calma. Poucos efeitos, todos marcantes. Nada de emoji, foto aleatória ou legenda gigante | No Claude Desktop, clique em **+** → **OpenCut** → **"Editar no estilo cinematográfico"** e escreva o nome do vídeo. Ou escreva: *"edita o vídeo X no estilo cinematográfico"* |
 | **Reels viral** | Rápido e chamativo: zoom a cada frase, legenda estilo Hormozi, títulos, emojis animados, efeitos sonoros | **+** → **OpenCut** → **"Editar Reels dinâmico (viral)"** |
 
-**Skill para o Claude Desktop (opcional):** o arquivo `skills/editor-cinematografico.zip` pode ser instalado em **Configurações → Capacidades → Skills → Enviar skill**. Assim o Claude usa o estilo cinematográfico sempre que você pedir um vídeo "bonito" ou "profissional".
+**Skills para o Claude Desktop (opcional):** os arquivos `skills/editor-com-plano.zip` e `skills/editor-cinematografico.zip` podem ser instalados em **Configurações → Capacidades → Skills → Enviar skill**. O primeiro faz o Claude sempre assistir e planejar antes de editar; o segundo entra quando você pedir um vídeo "bonito" ou "profissional".
 
 ---
 
@@ -55,7 +56,8 @@ O jeito mais fácil de ter uma edição bonita é pedir um **estilo pronto**. O 
 | `transcribe` | Escreve tudo o que é falado, com o tempo de cada palavra | Base para legenda, cortes e imagens | — |
 | `generate_captions` | Legenda automática. Estilos prontos (`preset`): **karaoke** (a palavra falada acende em amarelo), **hormozi** (grande, 2 palavras, amarelo/verde, pulando: o visual viral), **box** (caixa roxa atrás da palavra, estilo CapCut), **one_word** (uma palavra gigante por vez), **minimal** (legenda limpa) **neon** (brilho) e **cinematic** (pequena e elegante, embaixo, estilo dos criadores de tecnologia) | Reels/TikTok | “Legenda estilo Hormozi” |
 | `add_captions` | Legendas que você escreve (ex.: tradução) | Legenda em outro idioma | “Legenda em inglês” |
-| `add_title` | **Títulos animados prontos**: *pop* (palavras pulando), *typewriter* (máquina de escrever), *slide_up* (palavras subindo), *highlight* (marca-texto passando), *glitch* (falha digital) e *stamp* (carimbo que bate com tremida). Cada um já vem com o som certo | Gancho, títulos de seção, números, frases de efeito | “Título ‘3 dicas’ com carimbo” |
+| `add_title` | **Títulos animados prontos**: *pop* (palavras pulando), *typewriter* (máquina de escrever), *slide_up* (palavras subindo), *highlight* (marca-texto passando), *glitch* (falha digital), *stamp* (carimbo que bate com tremida) e *editorial* (estilo revista: linha pequena em cima + manchete estreita subindo linha por linha). Cada um já vem com o som certo | Gancho, títulos de seção, números, frases de efeito | “Título ‘3 dicas’ com carimbo” |
+| `set_layout` | **Troca de layout**: você desliza da tela cheia para um **quadro com borda e sombra** (do lado, embaixo ou no canto), com o fundo desfocado, e sobra espaço para um gráfico ou título. Depois volta para a tela cheia | Quando você explica ou compara algo | “Quando eu explicar os passos, me coloca num quadro e escreve ‘Passo 1’ do lado” |
 | `add_text` + `set_clip_properties` | Texto na tela com fonte, cor, tamanho, caixa e posição | Títulos simples | “Título ‘Receita fácil’ no topo” |
 
 ## 4. Enquadramento e câmera

@@ -23,6 +23,7 @@ import {
 	upsertKeyframes,
 } from "./helpers";
 import { layersCode } from "./layers-3d";
+import { LAYOUTS, type Layout, layoutCard, layoutCode, layoutZoom } from "./layout-card";
 import { baseBounds } from "./layout";
 import { getElementBounds } from "@/preview/element-bounds";
 import { SOUND_EFFECTS, SOUND_LEAD, type SoundEffect } from "./sound-effects";
@@ -647,6 +648,139 @@ async function duckMusic(args: Args) {
 
 // ---------------------------------------------------------------- dispatch
 
+// --------------------------------------------------------------- layouts
+
+/**
+ * The presenter moves from full frame into a rounded card (beside, below or
+ * in a corner) over a blurred copy of the shot, for [start, start+duration],
+ * then back — leaving room for a graphic, like pro explainer reels. Renders a
+ * clip right above the source clip (its sound keeps playing underneath).
+ */
+async function setLayout(args: Args) {
+	const project = requireOpenProject();
+	const { track, element } = findElement(str(args, "clipId"));
+	if (element.type !== "video") throw new Error("set_layout works on a video clip.");
+	const asset = mediaAsset(element);
+	if (!asset) throw new Error("The clip's media is missing.");
+	const bounds = baseBounds(element);
+	if (!bounds) throw new Error("The clip isn't visible.");
+	const layout = ((LAYOUTS as readonly string[]).includes(args.layout as string) ? args.layout : "frame_right") as Layout;
+	const clipStart = toSeconds(element.startTime);
+	const clipEnd = clipStart + toSeconds(element.duration);
+	const duration = Math.min(Math.max(optNum(args, "duration") ?? 4, 1.5), 30, clipEnd - clipStart);
+	const start = Math.min(Math.max(optNum(args, "start") ?? clipStart, clipStart), clipEnd - duration);
+	const { width, height } = project.settings.canvasSize;
+	const fps = Math.min(Math.max(Math.round(frameRateToFloat(project.settings.fps)), 1), 60);
+	const background =
+		project.settings.background.type === "color" ? project.settings.background.color : "#000000";
+	const card = layoutCard(layout, width, height);
+
+	const boundsAt = (time: number) =>
+		getElementBounds({
+			element,
+			canvasSize: { width, height },
+			mediaAsset: asset,
+			localTime: fromSeconds(start + time - clipStart),
+		}) ?? bounds;
+	const orig = new OffscreenCanvas(width, height);
+	const cursor = new FrameCursor(asset.file, sourceTime(element, start), sourceTime(element, start + duration), 1280);
+	const drawShot = async (time: number) => {
+		const o = orig.getContext("2d");
+		if (!o) throw new Error("Canvas unavailable.");
+		const b = boundsAt(time);
+		const frame = await cursor.at(sourceTime(element, start + time));
+		o.fillStyle = background;
+		o.fillRect(0, 0, width, height);
+		if (frame) {
+			o.save();
+			o.translate(b.cx, b.cy);
+			if (b.rotation) o.rotate((b.rotation * Math.PI) / 180);
+			o.drawImage(frame, -b.width / 2, -b.height / 2, b.width, b.height);
+			o.restore();
+		}
+	};
+
+	// Where the face is (a moment in), so the card keeps it framed.
+	let face = { x: 0.5, y: 0.38 };
+	try {
+		const finder = await createFaceFinder();
+		try {
+			await drawShot(Math.min(0.6, duration / 2));
+			const found = finder.find(orig);
+			if (found) face = { x: found.x, y: found.y };
+		} finally {
+			finder.close();
+		}
+	} catch {
+		// No face finder: the card centres on the upper middle.
+	}
+
+	const current = sceneTracks();
+	const overlayIndex = current.overlay.findIndex((t) => t.id === track.id);
+	const trackIndex = overlayIndex >= 0 ? overlayIndex : current.overlay.length;
+	const move = Math.min(0.5, duration / 4);
+	const accent = typeof args.accent === "string" && /^#[0-9a-f]{6}$/i.test(args.accent) ? args.accent : "#ff7a45";
+	const bg = typeof args.background === "string" && /^#[0-9a-f]{6}$/i.test(args.background) ? args.background : "blur";
+	let result: Awaited<ReturnType<typeof renderMotionGraphicClip>>;
+	try {
+		result = await renderMotionGraphicClip({
+			spec: {
+				code: layoutCode({
+					card,
+					face,
+					zoom: layoutZoom(layout, width, height),
+					move,
+					background: bg,
+					label: typeof args.label === "string" && args.label.trim() ? args.label.trim().slice(0, 40) : null,
+					accent,
+					font: "Montserrat",
+				}),
+				mode: "2d",
+				width,
+				height,
+				fps,
+				duration,
+				fonts: ["Montserrat"],
+			},
+			name: `Layout ${layout}`,
+			start,
+			trackIndex,
+			frames: async (_index, time) => {
+				await drawShot(time);
+				return { orig: await createImageBitmap(orig) };
+			},
+		});
+	} finally {
+		await cursor.close();
+	}
+	if (args.sound !== false) {
+		await addSoundEffect({ effect: "whoosh", at: start + move * 0.6, volumeDb: -12 });
+		await addSoundEffect({ effect: "swoosh_down", at: start + duration - move * 0.4, volumeDb: -14 });
+	}
+	const pct = (v: number, of: number) => Math.round((v / of) * 1000) / 10;
+	const portrait = height > width;
+	// The free part of the frame, for the graphic that goes with the layout.
+	const free =
+		layout === "split"
+			? portrait
+				? { x: 4, y: 6, w: 92, h: 42 }
+				: { x: 4, y: 6, w: 44, h: 88 }
+			: portrait
+				? { x: 4, y: 6, w: 92, h: pct(card.y, height) - 9 }
+				: layout === "frame_left"
+				? { x: pct(card.x + card.w, width) + 2, y: 8, w: 100 - pct(card.x + card.w, width) - 6, h: 84 }
+				: layout === "pip"
+					? { x: 4, y: 6, w: 92, h: portrait ? 46 : 54 }
+					: { x: 4, y: 8, w: pct(card.x, width) - 6, h: 84 };
+	return {
+		...result,
+		layout,
+		card: { x: pct(card.x, width), y: pct(card.y, height), w: pct(card.w, width), h: pct(card.h, height) },
+		freeArea: free,
+		note: `Percent of the frame. Put the explainer graphic (create_motion_graphic, add_title editorial, add_3d_logo, a picture) inside freeArea for [${round2(start)}, ${round2(start + duration)}] and above this layer; captions stay on top. The shot is full frame again at both ends.`,
+	};
+}
+
 // ------------------------------------------------------ scene detection
 
 /** Mean HSV of a small frame, per pixel (PySceneDetect's content measure). */
@@ -865,7 +999,7 @@ async function autoReframe(args: Args) {
 	};
 }
 
-export const HUMAN_TOOLS = new Set(["explode_layers", "punch_zoom", "add_sound_effect", "duck_music", "auto_reframe", "detect_scenes"]);
+export const HUMAN_TOOLS = new Set(["explode_layers", "punch_zoom", "add_sound_effect", "duck_music", "auto_reframe", "detect_scenes", "set_layout"]);
 
 export async function runHumanTool({ tool, args }: { tool: string; args: Args }): Promise<unknown> {
 	switch (tool) {
@@ -881,6 +1015,8 @@ export async function runHumanTool({ tool, args }: { tool: string; args: Args })
 			return autoReframe(args);
 		case "detect_scenes":
 			return detectScenes(args);
+		case "set_layout":
+			return setLayout(args);
 		default:
 			throw new Error(`Unknown tool: ${tool}`);
 	}

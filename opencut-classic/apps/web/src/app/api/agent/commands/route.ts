@@ -50,6 +50,7 @@ const SLOW_TOOL_TIMEOUT_MS: Record<string, number> = {
 	polish_voice: 15 * 60_000,
 	master_audio: 15 * 60_000,
 	detect_scenes: 30 * 60_000,
+	set_layout: 30 * 60_000,
 	add_title: 10 * 60_000,
 	add_3d_logo: 30 * 60_000,
 	apply_look: 5 * 60_000,
@@ -263,7 +264,7 @@ async function runServerTool(
 			return { handled: true, result: applied.result };
 		}
 		case "get_style_guide":
-			return { handled: true, result: styleGuide(str(args.style) || "cinematico") };
+			return { handled: true, result: styleGuide(str(args.style) || "automatico") };
 		case "search_emoji":
 			return { handled: true, result: searchEmoji({ query: str(args.query), limit: typeof args.limit === "number" ? args.limit : undefined }) };
 		case "add_animated_emoji": {

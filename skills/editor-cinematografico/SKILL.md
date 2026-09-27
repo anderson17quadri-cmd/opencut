@@ -25,3 +25,5 @@ Você edita usando **somente as ferramentas da extensão OpenCut** (o app OpenCu
   - "filme" ou "limpo": para vlog, luz do dia, comida e pessoas.
 - Nunca amplie vídeo de selfie ou vlog, porque borra. Projeto em 30 fps. Exporte em "very_high".
 - Legenda com `generate_captions` preset "cinematic", corrigindo palavras mal ouvidas. Marcas citadas com `add_3d_logo` na mão.
+- Quando a pessoa explica ou compara algo, use `set_layout` (ela vai para um quadro com borda) e coloque na área livre um título `add_title` preset "editorial" (linha pequena em cima + manchete).
+- Os efeitos acompanham o que está sendo dito: cada efeito aparece quando a pessoa fala daquilo.

@@ -28,7 +28,7 @@ Editing:
 - Captions: generate_captions transcribes the audio and adds styled captions on their own track (the first run downloads a speech model, which can take a few minutes). add_captions adds captions you write yourself (e.g. translations). Restyle them all later with set_clip_properties using the captions trackId. fontSize ≈ percent of video height × 0.9 (5 = normal captions, 8 = big social-media captions).
 - Layout: set_clip_properties places any visual clip with anchor (top-left … bottom-right, center) plus margin, or x/y (centre, % of the frame), and sizes it with widthPercent/heightPercent. It also styles text (font, size, colour, bold, background box), opacity, rotation, blend mode.
 - Titles: add_text, then set_clip_properties to style and place it, then animate for motion.
-- Animated titles: add_title (pop, typewriter, slide_up, highlight, glitch, stamp) — one call, with a fitting sound. Animated emojis: add_animated_emoji with the emoji itself (Google's animated set; search_emoji to browse).
+- Animated titles: add_title (pop, typewriter, slide_up, highlight, glitch, stamp, editorial) — one call, with a fitting sound. Animated emojis: add_animated_emoji with the emoji itself (Google's animated set; search_emoji to browse).
 - Designer animations (animated icons, arrows pointing, confetti, checkmarks, like/subscribe/follow buttons, lower thirds, transitions): search_animations then add_animation — prefer these over coding the same thing. Icons, emojis, logos and flags (static): search_icons (English keywords) then add_icon. Shapes (boxes, circles, bars behind text): add_shape.
 - Layers: tracks listed first in get_state are drawn on top. move_layer brings a layer to the front/back or above/below another.
 - Graphics behind the presenter (logos floating behind them, text behind the head, 3D screens in the background, "the scene splits into layers"): run cutout_person on the talking-head clip; motion graphics created before or after it land under the cutout, so they appear between the background and the person. Use move_layer for other clips (icons, text) that should go behind.
@@ -41,7 +41,7 @@ Editing:
 - From the internet: when the user asks for music, sound effects, images or b-roll, search_free_media then download_media (it also imports the file). For a link the user gives, download_media directly. YouTube/Instagram/TikTok pages can't be downloaded. Credits are collected automatically into a text file next to the exported video.
 - Pictures for what is being said (automatic b-roll — "put images when I mention something"). Only for things the speaker actually presents or explains, never for a passing example or figure of speech: 1) transcribe with words=true; 2) pick the concrete references worth illustrating (products, brands, places, people, objects, foods, numbers/events) — usually one every 3-8 s, not every noun; 3) for each, search_free_media type "image" with English keywords and match = a plain description of what the picture must show: an AI check orders the results by how well they show it (strong/possible/weak); look at the previews and pick a strong one that really shows the thing (none strong: search again with other words, or skip it); 4) add_web_image with that url, start = the time the word is spoken (≈0.1 s before), duration 2-4 s, style "card" (pop-up photo, anchor "top" on vertical videos so the face stays clear), "fullscreen" (cutaway covering the frame — add photo3d "push" so the still photo moves in 3D like footage; small pictures are sharpened by AI automatically) or "plain"; alternate positions/styles for variety; sound "pop" (cards) or "whoosh" (fullscreen) gives the pro feel; 5) view_frames at a few of those times to check (keep faces and burned-in captions clear). For a logo, prefer search_icons + add_icon. Never write credits on the video: author and licence of everything downloaded are recorded automatically, and export_video writes a "<video> - créditos.txt" file next to the video (creditsFile) that the user can paste into the post caption if they want — tell them where it is.
 
-Named styles: when the user asks for a beautiful/elegant/cinematic edit, "estilo cinematográfico", or an edit like a reference video they liked, call get_style_guide (style "cinematico") first and follow that guide instead of the recipe below.
+Plan first: before editing any video, call get_style_guide (style "automatico"): watch the video, diagnose its type (talking head, comparison, tutorial, vlog, review, podcast, sales ad, story, montage), write a beat-sheet plan with times, tell the user, then edit with that type's recipe. When the user asks for a beautiful/elegant/cinematic edit, "estilo cinematográfico", or an edit like a reference video they liked, use style "cinematico" instead. The guides win over the recipe below.
 
 Editing like a human editor (when the user asks for a professional/viral/"like that video" edit of a talking-head video, do all of this; for smaller asks, pick what fits):
 1. Understand it first: get_state, view_frames at 4-6 times, transcribe words=true. Read the whole script: find the hook, key points, lists, numbers, brand/product/place mentions, reveals, jokes and the call to action.
@@ -257,7 +257,7 @@ function previewsToImages(result: ToolResult): ToolResult {
 	};
 }
 
-const VERSION = "0.11.1";
+const VERSION = "0.12.0";
 
 const server = new McpServer(
 	{ name: "opencut", version: VERSION },
@@ -1253,10 +1253,13 @@ server.registerTool(
 	{
 		title: "Animated title (kinetic typography)",
 		description:
-			'A polished animated title in one call, like a motion designer\'s preset: "pop" (words pop in one after another, bouncy), "typewriter" (letters typed with a cursor), "slide_up" (words rise from an invisible line), "highlight" (a marker sweeps behind the accent words, or all of them), "glitch" (RGB-split digital glitch in and out), "stamp" (slams in from big with a shake — for a hook or a strong claim). Each gets a fitting sound unless sound "none". Use it for hooks, section titles, numbers and key phrases; use create_motion_graphic only for layouts these can\'t do.',
+			'A polished animated title in one call, like a motion designer\'s preset: "pop" (words pop in one after another, bouncy), "typewriter" (letters typed with a cursor), "slide_up" (words rise from an invisible line), "highlight" (a marker sweeps behind the accent words, or all of them), "glitch" (RGB-split digital glitch in and out), "stamp" (slams in from big with a shake — for a hook or a strong claim), "editorial" (magazine style of pro explainer reels: a small letter-spaced kicker line with an accent dot, then a condensed uppercase headline — Oswald — whose lines rise one after another, left-aligned; subtitle becomes a small meta line; "\\n" in text breaks lines; best with set_layout, inside its freeArea). Each gets a fitting sound unless sound "none". Use it for hooks, section titles, numbers and key phrases; use create_motion_graphic only for layouts these can\'t do.',
 		inputSchema: {
 			text: z.string().min(1).max(140),
-			preset: z.enum(["pop", "typewriter", "slide_up", "highlight", "glitch", "stamp"]).optional().describe("Default pop"),
+			preset: z.enum(["pop", "typewriter", "slide_up", "highlight", "glitch", "stamp", "editorial"]).optional().describe("Default pop"),
+			kicker: z.string().max(40).optional().describe('editorial: the small line above the headline, e.g. "DESAFIO DE EDIÇÃO"'),
+			x: z.number().min(0).max(90).optional().describe("editorial: left edge, % of the frame width (default 7)"),
+			align: z.enum(["left", "center"]).optional().describe("editorial: default left"),
 			start: z.number().min(0).optional().describe("Timeline seconds; default the playhead"),
 			duration: z.number().min(0.8).max(20).optional().describe("Default 2.5"),
 			position: z.enum(["top", "center", "bottom"]).optional().describe("Default top (keeps the face clear on talking heads)"),
@@ -1270,7 +1273,7 @@ server.registerTool(
 			size: z.number().min(2).max(20).optional().describe("Letter height, % of the frame height (default 6.5)"),
 			uppercase: z.boolean().optional().describe("Default true"),
 			outline: z.boolean().optional().describe("Black outline (default true)"),
-			sound: soundOption.optional().describe("Default fits the preset (pop→pop, slide_up→whoosh, highlight→swoosh_down, glitch→glitch, stamp→punch, typewriter→none)"),
+			sound: soundOption.optional().describe("Default fits the preset (pop→pop, slide_up→whoosh, highlight→swoosh_down, glitch→glitch, stamp→punch, typewriter→none, editorial→none)"),
 			behindPerson: z.boolean().optional().describe("Under a cutout_person layer (text behind the presenter)"),
 		},
 	},
@@ -1385,12 +1388,32 @@ server.registerTool(
 );
 
 server.registerTool(
+	"set_layout",
+	{
+		title: "Presenter into a framed card (layout change)",
+		description:
+			'The layout change of pro explainer reels: for a few seconds the presenter glides from full frame into a rounded card (with shadow and an optional label) over a blurred, darkened copy of the shot, leaving a free area for a graphic — then glides back to full frame. Layouts: "frame_right"/"frame_left" (card on one side; in 9:16 the card sits in the lower part and the top is free), "split" (card fills the bottom half in 9:16 / right half in 16:9), "pip" (small corner card). The face is found and kept framed. The sound keeps playing. Returns freeArea (percent of the frame): put the explainer graphic there (add_title preset "editorial", create_motion_graphic, add_3d_logo, a picture) for the same time range, then view_frames. Use it 1-3 times per video where the speaker explains or compares something — never for more than ~6 s.',
+		inputSchema: {
+			clipId: z.string().describe("The presenter's video clip"),
+			layout: z.enum(["frame_right", "frame_left", "split", "pip"]).optional().describe("Default frame_right"),
+			start: z.number().min(0).optional().describe("Timeline seconds (default the clip start)"),
+			duration: z.number().min(1.5).max(30).optional().describe("Default 4 (includes the moves in and out)"),
+			label: z.string().max(40).optional().describe('Small pill on the card, e.g. "Claude 5.5"'),
+			accent: hex.optional().describe("Label dot colour, default #ff7a45"),
+			background: hex.optional().describe("Solid background instead of the blurred shot"),
+			sound: z.boolean().optional().describe("Soft whoosh in and out (default true)"),
+		},
+	},
+	(args) => callOpenCut("set_layout", args),
+);
+
+server.registerTool(
 	"get_style_guide",
 	{
 		title: "Director's guide for an editing style",
 		description:
-			'The step-by-step director\'s guide for a named editing style — read it BEFORE editing when the user asks for that look, and follow it strictly. "cinematico": the elegant tech-reel look (film colour, discreet captions, 3D logos in the hand, few but striking effects, no random pictures/emojis). Use it when the user asks for a beautiful/elegant/cinematic/professional edit or "like that reference video".',
-		inputSchema: { style: z.string().optional().describe('Default "cinematico"') },
+			'The step-by-step director\'s guide for editing — read it BEFORE editing any video and follow it. "automatico" (default): watch the video first, diagnose its type (talking head, comparison, tutorial, vlog, review, podcast, sales ad, story, montage), light, sound and content, write a beat-sheet plan with times, tell the user, then edit with the recipe for that type. "cinematico": the elegant tech-reel look (film colour, discreet captions, editorial titles, layout changes, 3D logos in the hand, few but striking effects, no random pictures/emojis) — when the user asks for beautiful/elegant/cinematic or "like that reference video".',
+		inputSchema: { style: z.string().optional().describe('"automatico" (default) or "cinematico"') },
 	},
 	(args) => callOpenCut("get_style_guide", args),
 );
@@ -1481,6 +1504,17 @@ type PromptSpec = {
 };
 
 const PROMPTS: PromptSpec[] = [
+	{
+		name: "editar_com_plano",
+		title: "Editar com plano (se adapta ao vídeo)",
+		description: "Assiste o vídeo primeiro, identifica o tipo (explicação, comparação, tutorial, vlog, review, podcast, venda, história), monta um plano com tempos e edita com a receita certa.",
+		arguments: [
+			{ name: "video", description: "Nome do arquivo do vídeo (ex.: 20260927_170736.mp4)", required: true },
+			{ name: "observacoes", description: "Algo específico que você quer (opcional)", required: false },
+		],
+		template:
+			'Use a extensão OpenCut (o OpenCut está aberto no meu PC) para editar o vídeo "{video}". Não use outro programa. Primeiro chame get_style_guide com style "automatico" e siga o guia à risca: crie um projeto novo, ache o vídeo com list_media_files, add_media e add_to_timeline; assista o vídeo (view_frames e transcrição), faça o diagnóstico (tipo de vídeo, luz, som, momentos-chave) e o plano com tempos, me mostre em poucas linhas e depois edite seguindo a receita do tipo. {observacoes}',
+	},
 	{
 		name: "editar_estilo_cinematografico",
 		title: "Editar no estilo cinematográfico",

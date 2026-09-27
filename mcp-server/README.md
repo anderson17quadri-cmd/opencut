@@ -85,8 +85,12 @@ Tools (74), roughly what a professional editor does:
 - **Looks and styles**: `apply_look` grades footage with a GPU 3D-LUT pass
   (built-in film looks generated in `effects/looks.ts`, or any `.cube`
   file); `add_3d_logo` extrudes a colour SVG logo into a glossy, glowing
-  3D object, optionally following a hand; `get_style_guide` returns a
-  director's guide ("cinematico"). The extension also offers ready-made
+  3D object, optionally following a hand; `set_layout` moves the presenter
+  into a framed card over a blurred copy of the shot (room for a graphic);
+  `add_title` preset "editorial" draws magazine-style titles;
+  `get_style_guide` returns a director's guide ("automatico": watch,
+  diagnose the video type, plan with times, then edit with that type's
+  recipe; "cinematico"). The extension also offers ready-made
   prompts (MCP prompts) in Claude Desktop's "+" menu.
 - **Animated emojis**: `search_emoji` + `add_animated_emoji` (Google's Noto
   Animated Emoji, CC BY 4.0, credited automatically).
