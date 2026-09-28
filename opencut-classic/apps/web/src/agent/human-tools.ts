@@ -895,6 +895,67 @@ async function detectScenes(args: Args) {
  * followed when the face drifts away from the centre, so the frame doesn't
  * wobble.
  */
+/**
+ * auto_reframe on one clip, or — with no clipId, after remove_silences split
+ * the talk into many pieces — on every video clip of the main track.
+ */
+async function autoReframeMany(args: Args) {
+	if (typeof args.clipId === "string" && args.clipId) return autoReframe(args);
+	const clips = sceneTracks().main.elements.filter((e) => e.type === "video");
+	if (clips.length === 0) throw new Error("There is no video clip on the main track.");
+	const results = [];
+	const framed: Array<{ id: string; xs: number[]; seconds: number }> = [];
+	let maxOffset = 0;
+	for (const clip of clips) {
+		try {
+			const r = await autoReframe({ ...args, clipId: clip.id });
+			results.push({ clipId: clip.id, moves: r.moves, facesFoundIn: r.facesFoundIn });
+			framed.push({ id: clip.id, xs: r.positionsX, seconds: toSeconds(clip.duration) });
+			maxOffset = r.maxOffset;
+		} catch (error) {
+			results.push({ clipId: clip.id, error: error instanceof Error ? error.message : String(error) });
+		}
+	}
+	// One steady camera across the cuts: when a clip's framing is close to
+	// the typical one, use the typical one, so the face doesn't jump a little
+	// at every cut after remove_silences.
+	const { width } = requireOpenProject().settings.canvasSize;
+	const weighted = framed
+		.flatMap((f) => f.xs.map((x) => ({ x, w: f.seconds / f.xs.length })))
+		.sort((a, b) => a.x - b.x);
+	const total = weighted.reduce((sum, v) => sum + v.w, 0);
+	let acc = 0;
+	const typical = weighted.find((v) => (acc += v.w) >= total / 2)?.x ?? 0;
+	const tolerance = width * 0.12;
+	const steady = framed.filter((f) => f.xs.every((x) => Math.abs(x - typical) <= tolerance)).map((f) => f.id);
+	if (steady.length) {
+		const x = Math.min(Math.max(typical, -maxOffset), maxOffset);
+		await asOneStep(() => {
+			const ids = new Set(steady);
+			const update = <T extends { elements: TimelineElement[] }>(t: T): T => ({
+				...t,
+				elements: t.elements.map((e) => {
+					if (!ids.has(e.id)) return e;
+					const animations = { ...(e.animations ?? {}) };
+					delete animations["transform.positionX" as keyof typeof animations];
+					return {
+						...e,
+						animations: Object.keys(animations).length ? animations : undefined,
+						params: { ...e.params, "transform.positionX": x },
+					} as TimelineElement;
+				}),
+			});
+			const now = sceneTracks();
+			editor().timeline.updateTracks({ overlay: now.overlay, main: update(now.main), audio: now.audio });
+		});
+	}
+	return {
+		clips: results,
+		steadyClips: steady.length,
+		note: `Every video clip of the main track was reframed; ${steady.length} of ${framed.length} share one steady framing (the others follow the face where it moved far).`,
+	};
+}
+
 async function autoReframe(args: Args) {
 	const project = requireOpenProject();
 	const { track, element } = findElement(str(args, "clipId"));
@@ -994,6 +1055,8 @@ async function autoReframe(args: Args) {
 	return {
 		facesFoundIn: `${found}/${samples.length} samples`,
 		moves: Math.max(0, keys.length - 1),
+		positionsX: keys.map((k) => k.x),
+		maxOffset,
 		scale: Math.round(fit * 1000) / 1000,
 		note: "The clip now fills the frame and pans to keep the face in view. Run it after cuts (it keys the whole clip); punch_zoom afterwards replaces these keys, so reframe first and zoom only where needed — or use punch_zoom alone.",
 	};
@@ -1012,7 +1075,7 @@ export async function runHumanTool({ tool, args }: { tool: string; args: Args })
 		case "duck_music":
 			return duckMusic(args);
 		case "auto_reframe":
-			return autoReframe(args);
+			return autoReframeMany(args);
 		case "detect_scenes":
 			return detectScenes(args);
 		case "set_layout":

@@ -42,3 +42,6 @@ Mostre ao usuário o diagnóstico e o plano em até 10 linhas. Depois edite segu
   - "noturno" só para gravação de tripé com parede clara;
   - "filme" ou "limpo" para luz do dia e pessoas.
 - Corrija palavras mal ouvidas na legenda antes de gerar.
+- Música: você não consegue ouvir as faixas. Em vídeo falado, o padrão é **sem música**: sugira ao usuário pôr uma música em alta no próprio Instagram/TikTok, baixinha, na hora de postar. Nunca use faixas "chill", lo-fi, "upbeat", corporativas ou motivacionais, porque soam como anúncio de vendedor de curso. Se o usuário pedir música, use só fundo ambiente sem batida, bem baixo, e diga o nome da faixa.
+- No máximo dois estilos de enquadramento por vídeo, e o rosto sempre no mesmo lugar entre os cortes.
+- Efeito pedido pela pessoa (fogo, fumaça, faíscas) deve parecer real: vídeo do elemento em fundo preto com mesclagem "screen" seguindo a mão. Emoji animado só em vídeo divertido.

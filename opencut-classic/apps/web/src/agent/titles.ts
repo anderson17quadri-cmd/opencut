@@ -200,6 +200,8 @@ export interface EditorialSpec {
 	align: "left" | "center";
 	/** Small line under the headline, or null. */
 	meta: string | null;
+	/** Soft dark shade behind the text, so it reads on a bright wall. */
+	scrim: boolean;
 }
 
 /**
@@ -222,6 +224,31 @@ function render({ ctx, t, width, height, duration, ease, clamp }) {
 	ctx.textBaseline = "alphabetic";
 	ctx.globalAlpha = 1 - exit;
 	const shiftUp = exit * S * 0.4;
+	// Shade behind the block: from the top edge for a top title, a soft
+	// band elsewhere.
+	if (P.scrim) {
+		const lineCount = P.text.split("\\n").length;
+		const blockTop = y - (P.kicker ? S * 0.5 : 0);
+		const blockBottom = y + (P.kicker ? S * 0.24 : 0) + lineCount * S * 1.02 + (P.meta ? S * 0.5 : 0);
+		const appear = ease.out(clamp(t / 0.3));
+		const a = appear * (1 - exit);
+		const from = P.y < 0.3 ? 0 : Math.max(0, blockTop - S * 1.2);
+		const to = blockBottom + S * 1.2;
+		const g = ctx.createLinearGradient(0, from, 0, to);
+		if (P.y < 0.3) {
+			g.addColorStop(0, "rgba(0,0,0," + 0.6 * a + ")");
+			g.addColorStop(0.6, "rgba(0,0,0," + 0.32 * a + ")");
+		} else {
+			g.addColorStop(0, "rgba(0,0,0,0)");
+			g.addColorStop(0.5, "rgba(0,0,0," + 0.45 * a + ")");
+		}
+		g.addColorStop(1, "rgba(0,0,0,0)");
+		ctx.save();
+		ctx.globalAlpha = 1;
+		ctx.fillStyle = g;
+		ctx.fillRect(0, from, width, to - from);
+		ctx.restore();
+	}
 	// Kicker.
 	if (P.kicker) {
 		const k = Math.round(S * 0.3);
@@ -252,8 +279,9 @@ function render({ ctx, t, width, height, duration, ease, clamp }) {
 		const total = widths.reduce((a, b) => a + b, 0) + space * Math.max(0, words.length - 1);
 		let x = P.align === "center" ? (width - total) / 2 : left;
 		ctx.save();
-		ctx.beginPath(); ctx.rect(0, top - shiftUp, width, lh + S * 0.12); ctx.clip();
-		const dy = (1 - p) * lh;
+		// The mask starts above the line so accents (Ã, É) aren't cut.
+		ctx.beginPath(); ctx.rect(0, top - S * 0.3 - shiftUp, width, lh + S * 0.42); ctx.clip();
+		const dy = (1 - p) * (lh + S * 0.3);
 		words.forEach((w, j) => {
 			ctx.fillStyle = ACCENT.has(clean(w)) ? P.accentColor : P.color;
 			ctx.shadowColor = "rgba(0,0,0,0.35)"; ctx.shadowBlur = S * 0.15;

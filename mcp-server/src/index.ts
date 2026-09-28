@@ -51,7 +51,7 @@ Editing like a human editor (when the user asks for a professional/viral/"like t
 5. Keep it moving (at topic/scene changes use add_transition_effect — CrossZoom, GlitchMemories, FilmBurn…; plain cuts elsewhere): something should change every 2-4 s. punch_zoom on emphasis words (style "cut", alternate ~1.12 and ~1.25, return to wide in between; "push" for slow build-ups), pictures at mentions (add_web_image), add_title for key phrases and numbers, an animated emoji on punchlines/reactions (add_animated_emoji, 1-3 per video), graphics for lists/comparisons, icons. Never more than two new things at once, and keep the face clear.
 6. Captions: generate_captions with a preset — "hormozi" (viral talking-head look) or "box" (CapCut look) or "karaoke" — in the lower third, clear of the face and graphics.
 7. One or two signature moments where the script allows (talking about layers, how something is made, a reveal): explode_layers (the scene turns into 3D glass layers with numbered labels), cutout_person + graphics behind the presenter, follow_hand for objects in the hand, 3D motion graphics (floating screens, objects that explode into parts), picture-in-picture next to an animated explainer.
-8. Sound design: every graphic entrance gets a sound (add_sound_effect or the sound option): pop for small pop-ups, whoosh for movement and transitions, impact for big reveals, punch for text slamming in, click/mouse_click for UI and list items, ding/success for checkmarks/prices, notification for message pop-ups, error for a wrong answer, glitch for glitch moments, riser to build up to a reveal. Sounds around -8 dB. Music: search_free_media type "music" matching the mood, under the whole video, then duck_music so it dips while the person talks. With music, find_beats and put cuts/transitions on bars and zooms, pop-ups and sounds on beats. No voice recorded (a narrated video, an intro/outro)? generate_voiceover makes Portuguese narration from text.
+8. Sound design: every graphic entrance gets a sound (add_sound_effect or the sound option): pop for small pop-ups, whoosh for movement and transitions, impact for big reveals, punch for text slamming in, click/mouse_click for UI and list items, ding/success for checkmarks/prices, notification for message pop-ups, error for a wrong answer, glitch for glitch moments, riser to build up to a reveal. Sounds around -8 dB. Music: search_free_media type "music" matching the mood, under the whole video, then duck_music so it dips while the person talks (you cannot hear it: avoid "chill/lo-fi/upbeat/corporate/motivational" tracks on talking heads — they sound like a course-seller ad; for serious or premium videos use no music and let the user add a trending sound in the Instagram app, or an ambient pad at -32 dB under the voice). With music, find_beats and put cuts/transitions on bars and zooms, pop-ups and sounds on beats. No voice recorded (a narrated video, an intro/outro)? generate_voiceover makes Portuguese narration from text.
 9. Look: apply_look on the footage, chosen from what the frames show: "cinema" for most talking heads, "noturno" only for tripod talking heads against a bright/white wall, "filme"/"limpo" for vlogs, daylight, food and people (strength 60-90). Never scale selfie/vlog footage up (it blurs); set_project fps 30 for Reels.
 10. End with a call-to-action graphic in the last 2-3 s (follow/save/comment) with a ding.
 11. Loudness: master_audio (-14 LUFS, the social-media standard) once all sound is final.
@@ -257,7 +257,7 @@ function previewsToImages(result: ToolResult): ToolResult {
 	};
 }
 
-const VERSION = "0.12.0";
+const VERSION = "0.12.1";
 
 const server = new McpServer(
 	{ name: "opencut", version: VERSION },
@@ -1198,9 +1198,9 @@ server.registerTool(
 	{
 		title: "Reframe horizontal video for vertical",
 		description:
-			"Turn a horizontal (16:9) clip into a vertical (9:16) shot: scales it to fill the frame and pans a virtual camera to keep the speaker's face in view, moving only when the face drifts (no wobble), using on-device face detection. For repurposing YouTube/landscape footage into Reels/TikTok/Shorts. Set the project to 9:16 first; run it after cuts. It keys the clip's position, so punch_zoom afterwards would replace those keys.",
+			"Turn a horizontal (16:9) clip into a vertical (9:16) shot: scales it to fill the frame and pans a virtual camera to keep the speaker's face in view, moving only when the face drifts (no wobble), using on-device face detection. For repurposing YouTube/landscape footage into Reels/TikTok/Shorts. Set the project to 9:16 first; run it after cuts (no clipId = every clip of the main track). punch_zoom afterwards replaces the pan keys of that clip but keeps the face framed. The vertical crop cuts off hands held out to the side: where the effect needs a hand (add_3d_logo/follow_hand in the palm), set those clips wider with set_clip_properties heightPercent 60-70 (a cinematic letterbox; put an editorial title in the top bar).",
 		inputSchema: {
-			clipId: z.string(),
+			clipId: z.string().optional().describe("The 16:9 clip; omit to reframe every video clip of the main track (after remove_silences cut it into pieces)"),
 			sampleEvery: z.number().min(0.1).max(2).optional().describe("Seconds between face checks (default 0.33)"),
 		},
 	},
@@ -1260,6 +1260,7 @@ server.registerTool(
 			kicker: z.string().max(40).optional().describe('editorial: the small line above the headline, e.g. "DESAFIO DE EDIÇÃO"'),
 			x: z.number().min(0).max(90).optional().describe("editorial: left edge, % of the frame width (default 7)"),
 			align: z.enum(["left", "center"]).optional().describe("editorial: default left"),
+			scrim: z.boolean().optional().describe("editorial: soft dark shade behind the text so it reads on bright walls (default true)"),
 			start: z.number().min(0).optional().describe("Timeline seconds; default the playhead"),
 			duration: z.number().min(0.8).max(20).optional().describe("Default 2.5"),
 			position: z.enum(["top", "center", "bottom"]).optional().describe("Default top (keeps the face clear on talking heads)"),

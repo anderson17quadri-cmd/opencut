@@ -631,6 +631,7 @@ async function addTitle(args: Args) {
 						y: yPercent === undefined ? (args.position === "center" ? 0.4 : args.position === "bottom" ? 0.62 : 0.12) : Math.min(Math.max(yPercent, 0), 95) / 100,
 						align: args.align === "center" ? "center" : "left",
 						meta: typeof args.subtitle === "string" && args.subtitle.trim() ? args.subtitle.trim().slice(0, 80) : null,
+						scrim: args.scrim !== false,
 					})
 				: titleCode({
 				preset,

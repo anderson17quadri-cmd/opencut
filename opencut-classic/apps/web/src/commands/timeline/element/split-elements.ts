@@ -134,7 +134,7 @@ export class SplitElementsCommand extends Command {
 							...element,
 							duration: leftVisibleDuration,
 							trimEnd: leftTrimEnd,
-							name: `${element.name} (left)`,
+							name: splitName(element.name, "left"),
 							animations: leftAnimations,
 							...(retimeRef !== undefined ? { retime: retimeRef } : {}),
 						},
@@ -152,7 +152,7 @@ export class SplitElementsCommand extends Command {
 							startTime: this.splitTime,
 							duration: rightVisibleDuration,
 							trimStart: rightTrimStart,
-							name: `${element.name} (right)`,
+							name: splitName(element.name, "right"),
 							animations: rightAnimations,
 							...(retimeRef !== undefined ? { retime: retimeRef } : {}),
 						},
@@ -168,7 +168,7 @@ export class SplitElementsCommand extends Command {
 							...element,
 							duration: leftVisibleDuration,
 							trimEnd: leftTrimEnd,
-							name: `${element.name} (left)`,
+							name: splitName(element.name, "left"),
 							animations: leftAnimations,
 							...(retimeRef !== undefined ? { retime: retimeRef } : {}),
 						},
@@ -178,7 +178,7 @@ export class SplitElementsCommand extends Command {
 							startTime: this.splitTime,
 							duration: rightVisibleDuration,
 							trimStart: rightTrimStart,
-							name: `${element.name} (right)`,
+							name: splitName(element.name, "right"),
 							animations: rightAnimations,
 							...(retimeRef !== undefined ? { retime: retimeRef } : {}),
 						},
@@ -211,4 +211,9 @@ export class SplitElementsCommand extends Command {
 			editor.timeline.updateTracks(this.savedState);
 		}
 	}
+}
+
+/** "clip (left) (right) (left)" after many splits reads badly: keep one suffix. */
+function splitName(name: string, side: "left" | "right") {
+	return `${name.replace(/( \((left|right)\))+$/, "")} (${side})`;
 }

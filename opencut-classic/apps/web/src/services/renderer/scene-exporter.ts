@@ -38,6 +38,15 @@ const qualityMap = {
 	very_high: QUALITY_VERY_HIGH,
 };
 
+/**
+ * "Very high" as a fixed rate: ~18 Mbps for 1080×1920 at 30 fps, what
+ * Instagram/TikTok keep sharp after their own re-compression (the library's
+ * preset gave ~5 Mbps for vertical 1080p, visibly soft on faces).
+ */
+function veryHighBitrate({ width, height, fps }: { width: number; height: number; fps: number }) {
+	return Math.round(Math.min(Math.max(width * height * fps * 0.29, 12e6), 60e6));
+}
+
 export type SceneExporterEvents = {
 	progress: [progress: number];
 	complete: [buffer: ArrayBuffer];
@@ -118,7 +127,14 @@ export class SceneExporter extends EventEmitter<SceneExporterEvents> {
 
 		const videoSource = new CanvasSource(this.renderer.getOutputCanvas(), {
 			codec: this.format === "webm" ? "vp9" : "avc",
-			bitrate: qualityMap[this.quality],
+			bitrate:
+				this.quality === "very_high"
+					? veryHighBitrate({
+							width: this.renderer.getOutputCanvas().width,
+							height: this.renderer.getOutputCanvas().height,
+							fps: fpsFloat,
+						})
+					: qualityMap[this.quality],
 		});
 
 		output.addVideoTrack(videoSource, { frameRate: fpsFloat });
@@ -139,7 +155,14 @@ export class SceneExporter extends EventEmitter<SceneExporterEvents> {
 
 			audioSource = new AudioBufferSource({
 				codec: audioCodec,
-				bitrate: qualityMap[this.quality],
+				bitrate:
+				this.quality === "very_high"
+					? veryHighBitrate({
+							width: this.renderer.getOutputCanvas().width,
+							height: this.renderer.getOutputCanvas().height,
+							fps: fpsFloat,
+						})
+					: qualityMap[this.quality],
 			});
 			output.addAudioTrack(audioSource);
 		}
